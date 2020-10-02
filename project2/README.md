@@ -126,3 +126,81 @@ node가 leftmost가 아닌 경우 key와 pointer를 우측으로 한 칸씩 이�
 
 ##### # Case 2 : node is leftmost
 right node의 0번 칸의 값을 node의 마지막 칸에 넣고, 그에 맞게 parent node에 대한 pointer와 parent node의 key를 수정한다. 그 후 right node에선 key와 pointer를 좌측으로 한 칸씩 이동시킨다.
+
+## 2. Naïve design disk-based B+Tree
+
+### A. Data types
+leaf page일 경우 key(8) + value(120)의 record를 담아야하고, internal page일 경우 key(8) + page num(8)의 branch를 담아야 한다. 따라서 크기에 관한 상수와 각각의 자료형을 다음과 같이 만들어준다.
+
+``` c++
+constexpr size_t PAGE_DATA_VALUE_SIZE = 120;
+
+struct page_data_t {
+    int64_t key;
+    char     value[PAGE_DATA_VALUE_SIZE];
+};
+
+struct page_branch_t {
+    int64_t key;
+    pagenum_t child_page_offset;
+};
+```
+
+이제 각 page를 나타낼 자료형이 필요하다. 각 page는 header와 그 외의 부분으로 나눠진다. 따라서 공통되는 header 크기에 관한 상수와 header 자료형을 다음과 같이 정의한다.
+
+``` c++
+constexpr size_t PAGE_HEADER_SIZE = 128;
+constexpr size_t PAGE_HEADER_USED = 16;
+constexpr size_t PAGE_HEADER_RESERVED = PAGE_HEADER_SIZE - PAGE_HEADER_USED;
+
+struct page_header_t {
+    pagenum_t next_free_page_offset;
+
+    int       is_leaf;
+    int       num_keys;
+
+    char      reserved[PAGE_HEADER_RESERVED];
+};
+```
+이제 page의 자료형을 만들어야 하는데, internal page와 leaf page를 동시에 담기 위해 다음과 같이 page를 정의한다.
+
+``` c++
+constexpr size_t PAGE_SIZE = 4096;
+constexpr size_t PAGE_DATA_IN_PAGE = 31;
+constexpr size_t PAGE_BRANCHES_IN_PAGE = 248;
+
+struct page_t {
+    page_header_t header;
+
+    union {
+        page_data_t   data[PAGE_DATA_IN_PAGE];
+        page_branch_t branch[PAGE_BRANCHES_IN_PAGE];
+    };
+};
+```
+
+header page관련 상수와 자료형은 별도의 자료형으로 아래와 같이 만든다.
+
+``` c++
+constexpr size_t HEADER_PAGE_USED = 24;
+constexpr size_t HEADER_PAGE_RESERVED = PAGE_SIZE - HEADER_PAGE_USED;
+
+struct header_page_t {
+    uint64_t free_page_number;
+    uint64_t root_page_number;
+    uint64_t num_pages;
+
+    char     reserved[HEADER_PAGE_RESERVED];
+};
+```
+### B. B+Tree modification
+
+#### a. record
+기존의 bpt 코드에서는 데이터를 `record`로 표현했다. 하지만 on-disk B+Tree에서는 `page_data_t`로 표현하므로 `make_record` 함수를 다음과 같이 변경해야한다.
+
+``` c++
+page_data_t* make_record(int64_t key, char* value)
+```
+
+#### b. node
+기존의 bpt의 `node`에 대응되는 것은 `page_t`이다. 따라서 bpt 코드에서 `node`를 모두 `page_t`로 교체해야한다. 또한 index의 타입을 `pagenum_t`로 전부 교체해야한다.
