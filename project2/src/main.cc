@@ -11,8 +11,8 @@ using std::endl;
 int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
     bool is_running = true;
 
-    std::string cmd;
     while (!cin.eof() && is_running) {
+        std::string cmd;
         cin >> cmd;
 
         if (cmd == "open") {
