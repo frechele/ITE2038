@@ -223,7 +223,7 @@ void print_leaves( node * root ) {
         return;
     }
     while (!c->is_leaf)
-        c = c->pointers[0];
+        c = static_cast<node*>(c->pointers[0]);
     while (true) {
         for (i = 0; i < c->num_keys; i++) {
             if (verbose_output)
@@ -234,7 +234,7 @@ void print_leaves( node * root ) {
             printf("%lx ", (unsigned long)c->pointers[order - 1]);
         if (c->pointers[order - 1] != NULL) {
             printf(" | ");
-            c = c->pointers[order - 1];
+            c = static_cast<node*>(c->pointers[order - 1]);
         }
         else
             break;
@@ -251,7 +251,7 @@ int height( node * root ) {
     int h = 0;
     node * c = root;
     while (!c->is_leaf) {
-        c = c->pointers[0];
+        c = static_cast<node*>(c->pointers[0]);
         h++;
     }
     return h;
@@ -312,7 +312,7 @@ void print_tree( node * root ) {
         }
         if (!n->is_leaf)
             for (i = 0; i <= n->num_keys; i++)
-                enqueue(n->pointers[i]);
+                enqueue(static_cast<node*>(n->pointers[i]));
         if (verbose_output) {
             if (n->is_leaf) 
                 printf("%lx ", (unsigned long)n->pointers[order - 1]);
@@ -381,7 +381,7 @@ int find_range( node * root, int key_start, int key_end, bool verbose,
             returned_pointers[num_found] = n->pointers[i];
             num_found++;
         }
-        n = n->pointers[order - 1];
+        n = static_cast<node*>(n->pointers[order - 1]);
         i = 0;
     }
     return num_found;
@@ -476,17 +476,17 @@ record * make_record(int value) {
  */
 node * make_node( void ) {
     node * new_node;
-    new_node = malloc(sizeof(node));
+    new_node = new node;
     if (new_node == NULL) {
         perror("Node creation.");
         exit(EXIT_FAILURE);
     }
-    new_node->keys = malloc( (order - 1) * sizeof(int) );
+    new_node->keys = new int[order - 1];
     if (new_node->keys == NULL) {
         perror("New node keys array.");
         exit(EXIT_FAILURE);
     }
-    new_node->pointers = malloc( order * sizeof(void *) );
+    new_node->pointers = new void*[order];
     if (new_node->pointers == NULL) {
         perror("New node pointers array.");
         exit(EXIT_FAILURE);
@@ -558,13 +558,13 @@ node * insert_into_leaf_after_splitting(node * root, node * leaf, int key, recor
 
     new_leaf = make_leaf();
 
-    temp_keys = malloc( order * sizeof(int) );
+    temp_keys = new int[order];
     if (temp_keys == NULL) {
         perror("Temporary keys array.");
         exit(EXIT_FAILURE);
     }
 
-    temp_pointers = malloc( order * sizeof(void *) );
+    temp_pointers = new void*[order];
     if (temp_pointers == NULL) {
         perror("Temporary pointers array.");
         exit(EXIT_FAILURE);
@@ -657,12 +657,12 @@ node * insert_into_node_after_splitting(node * root, node * old_node, int left_i
      * the other half to the new.
      */
 
-    temp_pointers = malloc( (order + 1) * sizeof(node *) );
+    temp_pointers = new node*[order + 1];
     if (temp_pointers == NULL) {
         perror("Temporary pointers array for splitting nodes.");
         exit(EXIT_FAILURE);
     }
-    temp_keys = malloc( order * sizeof(int) );
+    temp_keys = new int[order];
     if (temp_keys == NULL) {
         perror("Temporary keys array for splitting nodes.");
         exit(EXIT_FAILURE);
@@ -670,7 +670,7 @@ node * insert_into_node_after_splitting(node * root, node * old_node, int left_i
 
     for (i = 0, j = 0; i < old_node->num_keys + 1; i++, j++) {
         if (j == left_index + 1) j++;
-        temp_pointers[j] = old_node->pointers[i];
+        temp_pointers[j] = static_cast<node*>(old_node->pointers[i]);
     }
 
     for (i = 0, j = 0; i < old_node->num_keys; i++, j++) {
@@ -701,11 +701,11 @@ node * insert_into_node_after_splitting(node * root, node * old_node, int left_i
         new_node->num_keys++;
     }
     new_node->pointers[j] = temp_pointers[i];
-    free(temp_pointers);
-    free(temp_keys);
+    delete[] temp_pointers;
+    delete[] temp_keys;
     new_node->parent = old_node->parent;
     for (i = 0; i <= new_node->num_keys; i++) {
-        child = new_node->pointers[i];
+        child = static_cast<node*>(new_node->pointers[i]);
         child->parent = new_node;
     }
 
@@ -800,7 +800,7 @@ node * start_new_tree(int key, record * pointer) {
  * however necessary to maintain the B+ tree
  * properties.
  */
-node * insert( node * root, int key, int value ) {
+node * insert_key( node * root, int key, int value ) {
 
     record * pointer;
     node * leaf;
@@ -936,7 +936,7 @@ node * adjust_root(node * root) {
     // as the new root.
 
     if (!root->is_leaf) {
-        new_root = root->pointers[0];
+        new_root = static_cast<node*>(root->pointers[0]);
         new_root->parent = NULL;
     }
 
@@ -1137,7 +1137,7 @@ node * delete_entry( node * root, node * n, int key, void * pointer ) {
 
     // Remove key and pointer from node.
 
-    n = remove_entry_from_node(n, key, pointer);
+    n = remove_entry_from_node(n, key, static_cast<node*>(pointer));
 
     /* Case:  deletion from the root. 
      */
@@ -1178,8 +1178,8 @@ node * delete_entry( node * root, node * n, int key, void * pointer ) {
     neighbor_index = get_neighbor_index( n );
     k_prime_index = neighbor_index == -1 ? 0 : neighbor_index;
     k_prime = n->parent->keys[k_prime_index];
-    neighbor = neighbor_index == -1 ? n->parent->pointers[1] : 
-        n->parent->pointers[neighbor_index];
+    neighbor = static_cast<node*>(neighbor_index == -1 ? n->parent->pointers[1] : 
+        n->parent->pointers[neighbor_index]);
 
     capacity = n->is_leaf ? order : order - 1;
 
@@ -1198,7 +1198,7 @@ node * delete_entry( node * root, node * n, int key, void * pointer ) {
 
 /* Master deletion function.
  */
-node * delete(node * root, int key) {
+node * delete_key(node * root, int key) {
 
     node * key_leaf;
     record * key_record;
@@ -1220,10 +1220,10 @@ void destroy_tree_nodes(node * root) {
             free(root->pointers[i]);
     else
         for (i = 0; i < root->num_keys + 1; i++)
-            destroy_tree_nodes(root->pointers[i]);
-    free(root->pointers);
-    free(root->keys);
-    free(root);
+            destroy_tree_nodes(static_cast<node*>(root->pointers[i]));
+    delete[] root->pointers;
+    delete[] root->keys;
+    delete root;
 }
 
 
