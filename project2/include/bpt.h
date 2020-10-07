@@ -151,7 +151,7 @@ node * insert_into_node_after_splitting(node * root, node * parent,
 node * insert_into_parent(node * root, node * left, int key, node * right);
 node * insert_into_new_root(node * left, int key, node * right);
 node * start_new_tree(int key, record * pointer);
-node * insert( node * root, int key, int value );
+node * insert_key( node * root, int key, int value );
 
 // Deletion.
 
@@ -163,7 +163,7 @@ node * redistribute_nodes(node * root, node * n, node * neighbor,
                           int neighbor_index,
         int k_prime_index, int k_prime);
 node * delete_entry( node * root, node * n, int key, void * pointer );
-node * delete( node * root, int key );
+node * delete_key( node * root, int key );
 
 void destroy_tree_nodes(node * root);
 node * destroy_tree(node * root);
