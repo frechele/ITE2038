@@ -9,7 +9,7 @@
 constexpr size_t PAGE_DATA_VALUE_SIZE = 120;
 
 constexpr size_t PAGE_HEADER_SIZE = 128;
-constexpr size_t PAGE_HEADER_USED = 16;
+constexpr size_t PAGE_HEADER_USED = 24;
 constexpr size_t PAGE_HEADER_RESERVED = PAGE_HEADER_SIZE - PAGE_HEADER_USED;
 
 constexpr size_t PAGE_SIZE = 4096;
@@ -42,6 +42,8 @@ struct page_header_t {
     int num_keys;
 
     char reserved[PAGE_HEADER_RESERVED];
+
+    pagenum_t page_a_number;
 };
 
 struct page_t {
@@ -61,17 +63,6 @@ struct header_page_t {
 
     char reserved[HEADER_PAGE_RESERVED];
 };
-
-// page utility functions
-constexpr pagenum_t& right_sibling_page_number(page_header_t& header)
-{
-    return *reinterpret_cast<pagenum_t*>(&header.reserved[PAGE_HEADER_RESERVED - 8]);
-}
-
-constexpr pagenum_t right_sibling_page_number(const page_header_t& header)
-{
-    return *reinterpret_cast<const pagenum_t*>(&header.reserved[PAGE_HEADER_RESERVED - 8]);
-}
 
 class FileManager final
 {
