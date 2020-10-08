@@ -2,6 +2,7 @@
 #define __PAGE_H__
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 // SIZE CONSTANTS
@@ -12,14 +13,17 @@ constexpr size_t PAGE_HEADER_USED = 16;
 constexpr size_t PAGE_HEADER_RESERVED = PAGE_HEADER_SIZE - PAGE_HEADER_USED;
 
 constexpr size_t PAGE_SIZE = 4096;
-constexpr size_t PAGE_DATA_IN_PAGE = 31;
-constexpr size_t PAGE_BRANCHES_IN_PAGE = 248;
+constexpr size_t PAGE_DATA_SIZE = 128;
+constexpr size_t PAGE_BRANCH_SIZE = 16;
+constexpr size_t PAGE_DATA_IN_PAGE = (PAGE_SIZE - PAGE_HEADER_SIZE) / PAGE_DATA_SIZE;
+constexpr size_t PAGE_BRANCHES_IN_PAGE = (PAGE_SIZE - PAGE_HEADER_SIZE) / PAGE_BRANCH_SIZE;
 
 constexpr size_t HEADER_PAGE_USED = 24;
 constexpr size_t HEADER_PAGE_RESERVED = PAGE_SIZE - HEADER_PAGE_USED;
 
 // TYPES
 using pagenum_t = uint64_t;
+constexpr pagenum_t NULL_PAGE_NUM = 0;
 
 struct page_data_t {
     int64_t key;
@@ -48,6 +52,7 @@ struct page_t {
         page_branch_t branch[PAGE_BRANCHES_IN_PAGE];
     };
 };
+using page_ptr_t = std::unique_ptr<page_t>;
 
 struct header_page_t {
     uint64_t free_page_number;
@@ -56,6 +61,17 @@ struct header_page_t {
 
     char reserved[HEADER_PAGE_RESERVED];
 };
+
+// page utility functions
+constexpr pagenum_t& right_sibling_page_number(page_header_t& header)
+{
+    return *reinterpret_cast<pagenum_t*>(&header.reserved[PAGE_HEADER_RESERVED - 8]);
+}
+
+constexpr pagenum_t right_sibling_page_number(const page_header_t& header)
+{
+    return *reinterpret_cast<const pagenum_t*>(&header.reserved[PAGE_HEADER_RESERVED - 8]);
+}
 
 class FileManager final
 {

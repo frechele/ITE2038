@@ -2,6 +2,9 @@
 
 #include "common.h"
 #include "file.h"
+#include "bpt.h"
+
+#include <string.h>
 
 int open_table(char* pathname)
 {
@@ -18,7 +21,11 @@ int db_insert(int64_t key, char* value)
     if (!FileManager::get().is_open())
         return FAIL;
 
-    return FAIL;
+    page_data_t record;
+    record.key = key;
+    strncpy(record.value, value, PAGE_DATA_VALUE_SIZE);
+
+    return BPTree::get().insert(record) ? SUCCESS : FAIL;
 }
 
 int db_find(int64_t key, char* ret_val)
@@ -26,7 +33,12 @@ int db_find(int64_t key, char* ret_val)
     if (!FileManager::get().is_open())
         return FAIL;
 
-    return FAIL;
+    auto res = BPTree::get().find(key);
+    if (!res)
+        return FAIL;
+
+    strncpy(ret_val, res.value().value, PAGE_DATA_VALUE_SIZE);
+    return SUCCESS;
 }
 
 int db_delete(int64_t key)

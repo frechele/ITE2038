@@ -21,15 +21,14 @@ bool FileManager::open(const std::string& filename) {
         close();
 
     if ((file_handle_ = ::open(filename.c_str(),
-        O_RDWR | O_APPEND | O_CREAT,
+        O_RDWR | O_APPEND | O_CREAT | O_DSYNC,
         S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) == -1)
         return false;
 
     header_ = new header_page_t;
-    if (!read(PAGE_SIZE, 0, &header_)) {
+    if (!read(PAGE_SIZE, 0, header_)) {
         memset(header_, 0, PAGE_SIZE);
-
-        write(PAGE_SIZE, 0, header_);
+        update_header();
     }
 
     return true;
@@ -39,6 +38,7 @@ void FileManager::close() {
     if (!is_open())
         return;
 
+	delete header_;
     ::close(file_handle_);
 }
 
@@ -66,12 +66,30 @@ pagenum_t file_alloc_page() {
     if (!FileManager::get().is_open())
         exit(EXIT_FAILURE);
 
-    auto header = FileManager().header();
-    ++header->num_pages;
-    
-    file_free_page(header->num_pages);
+    auto header = FileManager::get().header();
 
-    return header->num_pages;
+    pagenum_t alloced_page_num = NULL_PAGE_NUM;
+    if (header->free_page_number != NULL_PAGE_NUM)
+    {
+        page_t free_page;
+        file_read_page(header->free_page_number, &free_page);
+
+        header->free_page_number = free_page.header.next_free_page_id;
+
+        alloced_page_num = header->free_page_number;
+    }
+    else
+    {
+        alloced_page_num = ++header->num_pages;
+    
+        page_t new_page;
+        memset(&new_page, 0, PAGE_SIZE);
+
+        file_write_page(alloced_page_num, &new_page);
+    }
+
+    FileManager().get().update_header();
+    return alloced_page_num;
 }
 
 void file_free_page(pagenum_t pagenum) {
@@ -80,7 +98,7 @@ void file_free_page(pagenum_t pagenum) {
     page_t new_page;
     memset(&new_page, 0, PAGE_SIZE);
 
-    if (header->free_page_number == 0) {
+    if (header->free_page_number == NULL_PAGE_NUM) {
         header->free_page_number = pagenum;
         FileManager::get().update_header();
     } else {
