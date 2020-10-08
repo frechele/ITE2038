@@ -63,7 +63,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
             char value[120];
             if (SUCCESSED(db_find(key, value)))
             {
-                cout << key << " is " << value << '.' << endl;
+                cout << key << " : " << value << endl;
             }
             else
             {
