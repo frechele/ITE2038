@@ -21,7 +21,7 @@ bool FileManager::open(const std::string& filename) {
         close();
 
     if ((file_handle_ = ::open(filename.c_str(),
-        O_RDWR | O_APPEND | O_CREAT | O_DSYNC,
+        O_RDWR | O_CREAT | O_DSYNC,
         S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) == -1)
         return false;
 
