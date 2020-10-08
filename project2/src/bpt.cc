@@ -17,6 +17,11 @@ BPTree& BPTree::get()
     return instance;
 }
 
+void BPTree::sync_with_file()
+{
+    root_page_ = FileManager::get().header()->root_page_number;
+}
+
 bool BPTree::insert(const page_data_t& record)
 {
     // case 1 : duplicated key

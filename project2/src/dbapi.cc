@@ -13,6 +13,8 @@ int open_table(char* pathname)
     if (!FileManager::get().open(pathname))
         return -1;
 
+    BPTree::get().sync_with_file();
+
     return TABLE_COUNT++;
 }
 

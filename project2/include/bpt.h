@@ -17,6 +17,8 @@ public:
 public:
     static BPTree& get();
 
+    void sync_with_file();
+
     [[nodiscard]] bool insert(const page_data_t& record);
     [[nodiscard]] bool remove(int64_t key);
     [[nodiscard]] std::optional<page_data_t> find(int64_t key);
