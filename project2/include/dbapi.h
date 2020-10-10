@@ -11,4 +11,6 @@ int db_find(int64_t key, char* ret_val);
 
 int db_delete(int64_t key);
 
+void dump_debug();
+
 #endif  // __DBAPI_H__

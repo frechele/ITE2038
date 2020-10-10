@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <fstream>
 
 #include "common.h"
 #include "dbapi.h"
@@ -8,19 +9,22 @@ using std::cout;
 using std::cin;
 using std::endl;
 
-int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
+int main()
 {
     bool is_running = true;
 
-    while (!cin.eof() && is_running)
+    std::istream& in_stream = cin;
+    //std::istream&& in_stream = std::ifstream("input.txt");
+
+    while (!in_stream.eof() && is_running)
     {
         std::string cmd;
-        cin >> cmd;
+        in_stream >> cmd;
 
         if (cmd == "open")
         {
             std::string arg;
-            cin >> arg;
+            in_stream >> arg;
 
             if (open_table(&arg[0]) == -1)
             {
@@ -42,9 +46,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
         {
             int64_t key;
             std::string value;
-            cin >> key;
-            cin.get();
-            std::getline(cin, value);
+            in_stream >> key;
+            in_stream.get();
+            std::getline(in_stream, value);
 
             if (SUCCESSED(db_insert(key, &value[0])))
             {
@@ -58,7 +62,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
         else if (cmd == "find")
         {
             int64_t key;
-            cin >> key;
+            in_stream >> key;
 
             char value[120];
             if (SUCCESSED(db_find(key, value)))
@@ -73,7 +77,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
         else if (cmd == "delete")
         {
             int64_t key;
-            cin >> key;
+            in_stream >> key;
 
             if (SUCCESSED(db_delete(key)))
             {
@@ -83,6 +87,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
             {
                 cout << "delete " << key << " failed." << endl;
             }
+        }
+        else if (cmd == "print")
+        {
+            dump_debug();
         }
     }
 }

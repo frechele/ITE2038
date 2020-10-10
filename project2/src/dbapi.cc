@@ -6,6 +6,8 @@
 
 #include <string.h>
 
+#include <iostream>
+
 int open_table(char* pathname)
 {
     static int TABLE_COUNT = 0;
@@ -49,4 +51,12 @@ int db_delete(int64_t key)
         return FAIL;
 
     return FAIL;
+}
+
+void dump_debug()
+{
+    if (FileManager::get().is_open())
+    {
+        std::cout << BPTree::get().to_string() << std::endl;
+    }
 }
