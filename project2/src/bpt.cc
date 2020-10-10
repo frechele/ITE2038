@@ -360,6 +360,7 @@ void BPTree::insert_into_node_after_splitting(node_t& old_node, int left_index, 
     auto& [new_num, new_page] = new_node;
 
     const int64_t k_prime = temp_data[split_pivot - 1].key;
+    new_page->header.page_a_number = temp_data[split_pivot - 1].child_page_id;
     for (int i = split_pivot, j = 0; i < INTERNAL_ORDER; ++i, ++j)
     {
         new_page->branch[j] = temp_data[i];
