@@ -32,9 +32,18 @@ BPTree& BPTree::get()
     return instance;
 }
 
-void BPTree::sync_with_file()
+bool BPTree::open(const std::string& filename)
 {
+    if (!FileManager::get().open(filename))
+        return false;
+
     root_page_ = FileManager::get().header()->root_page_number;
+    return true;
+}
+
+bool BPTree::is_open() const
+{
+    return FileManager::get().is_open();
 }
 
 bool BPTree::insert(const page_data_t& record)
