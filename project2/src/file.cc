@@ -74,7 +74,7 @@ bool FileManager::file_alloc_page(pagenum_t& pagenum)
 
         pagenum = header_->free_page_number;
 
-        header_->free_page_number = free_page.header.next_free_page_id;
+        header_->free_page_number = free_page.free_header.next_free_page_number;
     }
     else
     {
@@ -110,7 +110,7 @@ bool FileManager::file_free_page(pagenum_t pagenum)
         if (!file_read_page(header_->free_page_number, &last_free_page))
             return false;
 
-        last_free_page.header.next_free_page_id = header_->num_pages;
+        last_free_page.free_header.next_free_page_number = header_->num_pages;
         if (!file_write_page(header_->free_page_number, &last_free_page))
             return false;
     }

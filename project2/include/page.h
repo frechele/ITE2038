@@ -10,6 +10,8 @@ constexpr size_t PAGE_DATA_VALUE_SIZE = 120;
 constexpr size_t PAGE_HEADER_SIZE = 128;
 constexpr size_t PAGE_HEADER_USED = 24;
 constexpr size_t PAGE_HEADER_RESERVED = PAGE_HEADER_SIZE - PAGE_HEADER_USED;
+constexpr size_t FREE_PAGE_HEADER_USED = 8;
+constexpr size_t FREE_PAGE_HEADER_RESERVED = PAGE_HEADER_SIZE - FREE_PAGE_HEADER_USED;
 
 constexpr size_t PAGE_SIZE = 4096;
 constexpr size_t PAGE_DATA_SIZE = 128;
@@ -33,12 +35,12 @@ struct page_data_t
 struct page_branch_t
 {
     int64_t key;
-    pagenum_t child_page_id;
+    pagenum_t child_page_number;
 };
 
 struct page_header_t
 {
-    pagenum_t next_free_page_id;
+    pagenum_t parent_page_number;
 
     int is_leaf;
     int num_keys;
@@ -48,9 +50,20 @@ struct page_header_t
     pagenum_t page_a_number;
 };
 
+struct free_page_header_t
+{
+    pagenum_t next_free_page_number;
+
+    char reserved[FREE_PAGE_HEADER_RESERVED];
+};
+
 struct page_t
 {
-    page_header_t header;
+    union
+    {
+        page_header_t header;
+        free_page_header_t free_header;
+    };
 
     union
     {
