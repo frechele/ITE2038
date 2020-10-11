@@ -6,6 +6,7 @@
 #include <optional>
 #include <tuple>
 #include <string>
+#include <vector>
 
 class BPTree
 {
@@ -23,7 +24,8 @@ public:
 
     [[nodiscard]] bool insert(const page_data_t& record);
     [[nodiscard]] bool remove(int64_t key);
-    [[nodiscard]] std::optional<page_data_t> find(int64_t key);
+    [[nodiscard]] std::optional<page_data_t> find(int64_t key) const;
+    [[nodiscard]] std::vector<page_data_t> find_range(int64_t key_start, int64_t key_end) const;
 
     std::string to_string() const;
 

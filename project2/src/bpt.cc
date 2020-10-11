@@ -92,7 +92,7 @@ bool BPTree::remove(int64_t key)
     return false;
 }
 
-std::optional<page_data_t> BPTree::find(int64_t key)
+std::optional<page_data_t> BPTree::find(int64_t key) const
 {
     const auto& [num, page] = find_leaf(key);
     if (page == nullptr)
@@ -107,6 +107,33 @@ std::optional<page_data_t> BPTree::find(int64_t key)
         return std::nullopt;
 
     return page->data[i];
+}
+
+std::vector<page_data_t> BPTree::find_range(int64_t key_start, int64_t key_end) const
+{
+    auto [pagenum, page] = find_leaf(key_start);
+
+    if (pagenum == NULL_PAGE_NUM)
+        return {};
+
+    int i = 0;
+    for (; i < page->header.num_keys && page->data[i].key < key_start; ++i);
+
+    if (i == page->header.num_keys)
+        return {};
+
+    std::vector<page_data_t> result;
+    while (pagenum != NULL_PAGE_NUM)
+    {
+        for (; i < page->header.num_keys && page->data[i].key <= key_end; ++i)
+            result.push_back(page->data[i]);
+
+        pagenum = page->header.page_a_number;
+        file_read_page(pagenum, page.get());
+        i = 0;
+    }
+
+    return result;
 }
 
 std::string BPTree::to_string() const
@@ -167,6 +194,7 @@ BPTree::node_t BPTree::make_node(bool is_leaf) const
     
     new_page->header.is_leaf = is_leaf;
 
+    file_write_page(new_page_num, new_page.get());
     return { new_page_num, std::move(new_page) };
 }
 
