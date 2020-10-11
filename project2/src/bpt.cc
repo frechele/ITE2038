@@ -1,5 +1,6 @@
 #include "bpt.h"
 
+#include <algorithm>
 #include <array>
 #include <string.h>
 #include <sstream>
@@ -209,9 +210,13 @@ BPTree::node_t BPTree::find_leaf(int64_t key) const
 
 	while (!current->header.is_leaf)
 	{
-		int child_idx = 0;
-		while (child_idx < current->header.num_keys && key >= current->branch[child_idx].key)
-			++child_idx;
+		int child_idx = std::distance(current->branch,
+                                    std::upper_bound(current->branch, 
+                                        current->branch + current->header.num_keys, key, 
+                                        [](auto lhs, const auto& rhs) {
+                                            return lhs < rhs.key;
+                                        }
+                                    ));
 
         --child_idx;
 		page_num = (child_idx == -1) ? current->header.page_a_number : current->branch[child_idx].child_page_id;
@@ -241,9 +246,11 @@ void BPTree::insert_into_leaf(node_t& leaf_node, const page_data_t& record)
 {
     auto& [leaf_num, leaf] = leaf_node;
 
-    int insertion_point = 0;
-    while (insertion_point < leaf->header.num_keys && leaf->data[insertion_point].key < record.key)
-        ++insertion_point;
+    int insertion_point = std::distance(leaf->data,
+                                    std::lower_bound(leaf->data, leaf->data + leaf->header.num_keys, record.key,
+                                    [](const auto& lhs, auto rhs) {
+                                        return lhs.key < rhs;
+                                    }));
 
     for (int i = leaf->header.num_keys; i > insertion_point; --i)
         leaf->data[i] = leaf->data[i - 1];
@@ -331,9 +338,11 @@ void BPTree::insert_into_leaf_after_splitting(node_t& leaf_node, const page_data
     auto new_leaf_node = make_node(true);
     auto& [new_leaf_num, new_leaf] = new_leaf_node;
 
-    int insertion_point = 0;
-    while (insertion_point < LEAF_ORDER - 1 && leaf->data[insertion_point].key < record.key)
-        ++insertion_point;
+    int insertion_point = std::distance(leaf->data,
+                                    std::lower_bound(leaf->data, leaf->data + (LEAF_ORDER - 1), record.key,
+                                    [](const auto& lhs, auto rhs) {
+                                        return lhs.key < rhs;
+                                    }));
 
     std::array<page_data_t, LEAF_ORDER> temp_data;
     for (int i = 0, j = 0; i < leaf->header.num_keys; ++i, ++j)
