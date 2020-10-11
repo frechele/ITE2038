@@ -3,8 +3,8 @@
 #include "common.h"
 
 #include <fcntl.h>
-#include <unistd.h>
 #include <memory.h>
+#include <unistd.h>
 
 FileManager& FileManager::get()
 {
@@ -22,9 +22,9 @@ bool FileManager::open(const std::string& filename)
     if (is_open())
         close();
 
-    if ((file_handle_ = ::open(filename.c_str(),
-        O_RDWR | O_CREAT | O_DSYNC ,
-        S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) == -1)
+    if ((file_handle_ = ::open(
+             filename.c_str(), O_RDWR | O_CREAT | O_DSYNC,
+             S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) == -1)
         return false;
 
     header_ = new header_page_t;
@@ -44,7 +44,7 @@ void FileManager::close()
     if (!is_open())
         return;
 
-	delete header_;
+    delete header_;
     ::close(file_handle_);
 }
 
@@ -88,7 +88,7 @@ bool FileManager::file_alloc_page(pagenum_t& pagenum)
 
         ++header_->num_pages;
     }
-    
+
     update_header();
     return true;
 }
@@ -114,7 +114,7 @@ bool FileManager::file_free_page(pagenum_t pagenum)
         if (!file_write_page(header_->free_page_number, &last_free_page))
             return false;
     }
-    
+
     return file_write_page(pagenum, &new_page);
 }
 

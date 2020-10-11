@@ -1,7 +1,7 @@
 #include "dbapi.h"
 
-#include "common.h"
 #include "bpt.h"
+#include "common.h"
 
 #include <string.h>
 

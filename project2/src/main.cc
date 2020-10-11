@@ -1,12 +1,12 @@
+#include <fstream>
 #include <iostream>
 #include <string>
-#include <fstream>
 
 #include "common.h"
 #include "dbapi.h"
 
-using std::cout;
 using std::cin;
+using std::cout;
 using std::endl;
 
 int main()
@@ -14,7 +14,7 @@ int main()
     bool is_running = true;
 
     std::istream& in_stream = cin;
-    //std::istream&& in_stream = std::ifstream("input.txt");
+    // std::istream&& in_stream = std::ifstream("input.txt");
 
     while (!in_stream.eof() && is_running)
     {
@@ -34,14 +34,13 @@ int main()
             {
                 cout << "open table " << arg << '.' << endl;
             }
-            
         }
         else if (cmd == "quit")
         {
             cout << "dbms will be shutdown." << endl;
 
             is_running = false;
-        } 
+        }
         else if (cmd == "insert")
         {
             int64_t key;

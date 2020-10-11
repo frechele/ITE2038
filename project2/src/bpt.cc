@@ -1,16 +1,16 @@
 #include "bpt.h"
 
+#include <string.h>
 #include <algorithm>
 #include <array>
-#include <string.h>
-#include <sstream>
 #include <queue>
+#include <sstream>
 
 namespace
 {
 constexpr int cut(int length)
 {
-    return (length % 2) ? (length/2 + 1) : (length/2);
+    return (length % 2) ? (length / 2 + 1) : (length / 2);
 }
 
 int get_left_index(const page_t& parent, pagenum_t left_num)
@@ -20,12 +20,12 @@ int get_left_index(const page_t& parent, pagenum_t left_num)
 
     int left_index = 0;
     while (left_index < parent.header.num_keys &&
-        parent.branch[left_index].child_page_number != left_num)
+           parent.branch[left_index].child_page_number != left_num)
         ++left_index;
 
     return left_index + 1;
 }
-}
+}  // namespace
 
 BPTree& BPTree::get()
 {
@@ -58,7 +58,7 @@ bool BPTree::insert(const page_data_t& record)
     {
         page_ptr_t new_page;
         std::tie(root_page_, new_page) = make_node(true);
-        
+
         new_page->header.parent_page_number = NULL_PAGE_NUM;
         new_page->header.num_keys = 1;
 
@@ -83,7 +83,7 @@ bool BPTree::insert(const page_data_t& record)
     }
 
     // case 3-2 : leaf must be split
-    
+
     insert_into_leaf_after_splitting(leaf_node, record);
     return true;
 }
@@ -110,7 +110,8 @@ std::optional<page_data_t> BPTree::find(int64_t key) const
     return page->data[i];
 }
 
-std::vector<page_data_t> BPTree::find_range(int64_t key_start, int64_t key_end) const
+std::vector<page_data_t> BPTree::find_range(int64_t key_start,
+                                            int64_t key_end) const
 {
     auto [pagenum, page] = find_leaf(key_start);
 
@@ -118,7 +119,8 @@ std::vector<page_data_t> BPTree::find_range(int64_t key_start, int64_t key_end) 
         return {};
 
     int i = 0;
-    for (; i < page->header.num_keys && page->data[i].key < key_start; ++i);
+    for (; i < page->header.num_keys && page->data[i].key < key_start; ++i)
+        ;
 
     if (i == page->header.num_keys)
         return {};
@@ -160,7 +162,7 @@ std::string BPTree::to_string() const
                 page_t parent;
                 file_read_page(page.header.parent_page_number, &parent);
 
-                if (parent.header.page_a_number == page_num) // leftmost
+                if (parent.header.page_a_number == page_num)  // leftmost
                 {
                     const int new_rank = path_to_root(page_num);
                     if (new_rank != rank)
@@ -172,9 +174,12 @@ std::string BPTree::to_string() const
             }
 
             for (int i = 0; i < page.header.num_keys; ++i)
-                ss << (page.header.is_leaf ? page.data[i].key : page.branch[i].key) << ' ';
+                ss << (page.header.is_leaf ? page.data[i].key
+                                           : page.branch[i].key)
+                   << ' ';
 
-            if (!page.header.is_leaf && page.header.page_a_number != NULL_PAGE_NUM)
+            if (!page.header.is_leaf &&
+                page.header.page_a_number != NULL_PAGE_NUM)
             {
                 queue.emplace(page.header.page_a_number);
                 for (int i = 0; i < page.header.num_keys; ++i)
@@ -192,7 +197,7 @@ BPTree::node_t BPTree::make_node(bool is_leaf) const
 {
     pagenum_t new_page_num = file_alloc_page();
     page_ptr_t new_page = std::make_unique<page_t>();
-    
+
     new_page->header.is_leaf = is_leaf;
 
     file_write_page(new_page_num, new_page.get());
@@ -201,29 +206,29 @@ BPTree::node_t BPTree::make_node(bool is_leaf) const
 
 BPTree::node_t BPTree::find_leaf(int64_t key) const
 {
-	if (root_page_ == NULL_PAGE_NUM)
-		return { NULL_PAGE_NUM, nullptr };
+    if (root_page_ == NULL_PAGE_NUM)
+        return { NULL_PAGE_NUM, nullptr };
 
-	page_ptr_t current = std::make_unique<page_t>();
-	pagenum_t page_num = root_page_;
-	file_read_page(page_num, current.get());
+    page_ptr_t current = std::make_unique<page_t>();
+    pagenum_t page_num = root_page_;
+    file_read_page(page_num, current.get());
 
-	while (!current->header.is_leaf)
-	{
-		int child_idx = std::distance(current->branch,
-                                    std::upper_bound(current->branch, 
-                                        current->branch + current->header.num_keys, key, 
-                                        [](auto lhs, const auto& rhs) {
-                                            return lhs < rhs.key;
-                                        }
-                                    ));
+    while (!current->header.is_leaf)
+    {
+        int child_idx = std::distance(
+            current->branch,
+            std::upper_bound(
+                current->branch, current->branch + current->header.num_keys,
+                key, [](auto lhs, const auto& rhs) { return lhs < rhs.key; }));
 
         --child_idx;
-		page_num = (child_idx == -1) ? current->header.page_a_number : current->branch[child_idx].child_page_number;
-		file_read_page(page_num, current.get());
-	}
+        page_num = (child_idx == -1)
+                       ? current->header.page_a_number
+                       : current->branch[child_idx].child_page_number;
+        file_read_page(page_num, current.get());
+    }
 
-	return { page_num, std::move(current) };
+    return { page_num, std::move(current) };
 }
 
 int BPTree::path_to_root(pagenum_t child_num) const
@@ -246,11 +251,11 @@ void BPTree::insert_into_leaf(node_t& leaf_node, const page_data_t& record)
 {
     auto& [leaf_num, leaf] = leaf_node;
 
-    int insertion_point = std::distance(leaf->data,
-                                    std::lower_bound(leaf->data, leaf->data + leaf->header.num_keys, record.key,
-                                    [](const auto& lhs, auto rhs) {
-                                        return lhs.key < rhs;
-                                    }));
+    int insertion_point = std::distance(
+        leaf->data,
+        std::lower_bound(
+            leaf->data, leaf->data + leaf->header.num_keys, record.key,
+            [](const auto& lhs, auto rhs) { return lhs.key < rhs; }));
 
     for (int i = leaf->header.num_keys; i > insertion_point; --i)
         leaf->data[i] = leaf->data[i - 1];
@@ -261,7 +266,8 @@ void BPTree::insert_into_leaf(node_t& leaf_node, const page_data_t& record)
     file_write_page(leaf_num, leaf.get());
 }
 
-void BPTree::insert_into_parent(node_t& left_node, node_t& right_node, int64_t key)
+void BPTree::insert_into_parent(node_t& left_node, node_t& right_node,
+                                int64_t key)
 {
     auto& [left_num, left] = left_node;
     auto& [right_num, right] = right_node;
@@ -274,7 +280,8 @@ void BPTree::insert_into_parent(node_t& left_node, node_t& right_node, int64_t k
     }
 
     // case 2 : leaf or node
-    node_t parent_node { left->header.parent_page_number, std::make_unique<page_t>() };
+    node_t parent_node{ left->header.parent_page_number,
+                        std::make_unique<page_t>() };
     auto& [parent_num, parent] = parent_node;
     file_read_page(parent_num, parent.get());
 
@@ -291,7 +298,8 @@ void BPTree::insert_into_parent(node_t& left_node, node_t& right_node, int64_t k
     insert_into_node_after_splitting(parent_node, left_index, right_num, key);
 }
 
-void BPTree::insert_into_new_root(node_t& left_node, node_t& right_node, int64_t key)
+void BPTree::insert_into_new_root(node_t& left_node, node_t& right_node,
+                                  int64_t key)
 {
     auto& [left_num, left] = left_node;
     auto& [right_num, right] = right_node;
@@ -316,7 +324,8 @@ void BPTree::insert_into_new_root(node_t& left_node, node_t& right_node, int64_t
     root_page_ = new_root_num;
 }
 
-void BPTree::insert_into_node(node_t& parent_node, int left_index, pagenum_t right_num, int64_t key)
+void BPTree::insert_into_node(node_t& parent_node, int left_index,
+                              pagenum_t right_num, int64_t key)
 {
     auto& [parent_num, parent] = parent_node;
 
@@ -331,23 +340,25 @@ void BPTree::insert_into_node(node_t& parent_node, int left_index, pagenum_t rig
     file_write_page(parent_num, parent.get());
 }
 
-void BPTree::insert_into_leaf_after_splitting(node_t& leaf_node, const page_data_t& record)
+void BPTree::insert_into_leaf_after_splitting(node_t& leaf_node,
+                                              const page_data_t& record)
 {
     auto& [leaf_num, leaf] = leaf_node;
 
     auto new_leaf_node = make_node(true);
     auto& [new_leaf_num, new_leaf] = new_leaf_node;
 
-    int insertion_point = std::distance(leaf->data,
-                                    std::lower_bound(leaf->data, leaf->data + (LEAF_ORDER - 1), record.key,
-                                    [](const auto& lhs, auto rhs) {
-                                        return lhs.key < rhs;
-                                    }));
+    int insertion_point = std::distance(
+        leaf->data, std::lower_bound(leaf->data, leaf->data + (LEAF_ORDER - 1),
+                                     record.key, [](const auto& lhs, auto rhs) {
+                                         return lhs.key < rhs;
+                                     }));
 
     std::array<page_data_t, LEAF_ORDER> temp_data;
     for (int i = 0, j = 0; i < leaf->header.num_keys; ++i, ++j)
     {
-        if (j == insertion_point) ++j;
+        if (j == insertion_point)
+            ++j;
         temp_data[j] = leaf->data[i];
     }
 
@@ -379,7 +390,8 @@ void BPTree::insert_into_leaf_after_splitting(node_t& leaf_node, const page_data
     insert_into_parent(leaf_node, new_leaf_node, new_leaf->data[0].key);
 }
 
-void BPTree::insert_into_node_after_splitting(node_t& old_node, int left_index, pagenum_t right_num, int64_t key)
+void BPTree::insert_into_node_after_splitting(node_t& old_node, int left_index,
+                                              pagenum_t right_num, int64_t key)
 {
     auto& [old_num, old] = old_node;
 
@@ -387,7 +399,8 @@ void BPTree::insert_into_node_after_splitting(node_t& old_node, int left_index, 
 
     for (int i = 0, j = 0; i < old->header.num_keys; ++i, ++j)
     {
-        if (j == left_index) ++j;
+        if (j == left_index)
+            ++j;
         temp_data[j] = old->branch[i];
     }
     temp_data[left_index].key = key;
@@ -406,7 +419,8 @@ void BPTree::insert_into_node_after_splitting(node_t& old_node, int left_index, 
     auto& [new_num, new_page] = new_node;
 
     const int64_t k_prime = temp_data[split_pivot - 1].key;
-    new_page->header.page_a_number = temp_data[split_pivot - 1].child_page_number;
+    new_page->header.page_a_number =
+        temp_data[split_pivot - 1].child_page_number;
     for (int i = split_pivot, j = 0; i < INTERNAL_ORDER; ++i, ++j)
     {
         new_page->branch[j] = temp_data[i];
@@ -416,7 +430,8 @@ void BPTree::insert_into_node_after_splitting(node_t& old_node, int left_index, 
 
     for (int i = -1; i < new_page->header.num_keys; ++i)
     {
-        const pagenum_t j = (i == -1) ? new_page->header.page_a_number : new_page->branch[i].child_page_number;
+        const pagenum_t j = (i == -1) ? new_page->header.page_a_number
+                                      : new_page->branch[i].child_page_number;
 
         page_t child;
         file_read_page(j, &child);

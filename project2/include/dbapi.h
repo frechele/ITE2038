@@ -3,8 +3,7 @@
 
 #include <cstdint>
 
-extern "C"
-{
+extern "C" {
 int open_table(char* pathname);
 
 int db_insert(int64_t key, char* value);

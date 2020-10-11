@@ -7,7 +7,7 @@
 
 class FileManager final
 {
-public:
+ public:
     static FileManager& get();
 
     ~FileManager();
@@ -16,7 +16,7 @@ public:
     void close();
 
     [[nodiscard]] bool is_open() const;
-    
+
     header_page_t* header() const;
     [[nodiscard]] bool update_header();
 
@@ -25,11 +25,11 @@ public:
     [[nodiscard]] bool file_read_page(pagenum_t pagenum, page_t* dest);
     [[nodiscard]] bool file_write_page(pagenum_t pagenum, const page_t* src);
 
-private:
+ private:
     [[nodiscard]] bool read(size_t size, size_t offset, void* value);
     [[nodiscard]] bool write(size_t size, size_t offset, const void* value);
 
-private:
+ private:
     int file_handle_{ -1 };
     header_page_t* header_{ nullptr };
 };
