@@ -7,4 +7,7 @@
 #define SUCCESSED(cond) ((cond) == SUCCESS)
 #define FAILED(cond) ((cond) != SUCCESS)
 
+#define CHECK_FAILURE(cond) if (!(cond)) { return false; }
+#define CHECK_FAILURE2(cond, val) if (!(cond)) { return val; }
+
 #endif  // COMMON_H_

@@ -47,7 +47,7 @@ int db_delete(int64_t key)
     if (!BPTree::get().is_open())
         return FAIL;
 
-    return FAIL;
+    return SUCCESS;
 }
 
 void dump_debug()

@@ -22,18 +22,20 @@ bool FileManager::open(const std::string& filename)
     if (is_open())
         close();
 
+    const bool create_new = (access(filename.c_str(), F_OK) == -1);
+
     if ((file_handle_ = ::open(
              filename.c_str(), O_RDWR | O_CREAT | O_DSYNC,
              S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) == -1)
         return false;
 
-    header_ = new header_page_t;
-    if (!read(PAGE_SIZE, 0, header_))
+    if (create_new)
     {
-        memset(header_, 0, PAGE_SIZE);
-        header_->num_pages = 1;
+        page_t file_header;
+        memset(&file_header, 0, PAGE_SIZE);
+        file_header.file.num_pages = 1;
 
-        update_header();
+        CHECK_FAILURE(file_write_page(0, &file_header));
     }
 
     return true;
@@ -44,7 +46,6 @@ void FileManager::close()
     if (!is_open())
         return;
 
-    delete header_;
     ::close(file_handle_);
 }
 
@@ -53,69 +54,67 @@ bool FileManager::is_open() const
     return file_handle_ > 0;
 }
 
-header_page_t* FileManager::header() const
-{
-    return header_;
-}
-
-bool FileManager::update_header()
-{
-    return write(PAGE_SIZE, 0, header_);
-}
-
 bool FileManager::file_alloc_page(pagenum_t& pagenum)
 {
     pagenum = NULL_PAGE_NUM;
-    if (header_->free_page_number != NULL_PAGE_NUM)
+
+    Page header;
+
+    CHECK_FAILURE(header.load());
+    if (header.header_page().free_page_number != NULL_PAGE_NUM)
     {
-        page_t free_page;
-        if (!file_read_page(header_->free_page_number, &free_page))
-            return false;
+        Page free_page(header.header_page().free_page_number);
 
-        pagenum = header_->free_page_number;
+        CHECK_FAILURE(free_page.load());
 
-        header_->free_page_number = free_page.free_header.next_free_page_number;
+        pagenum = header.header_page().free_page_number;
+
+        header.header_page().free_page_number = free_page.free_header().next_free_page_number;
     }
     else
     {
-        pagenum = header_->num_pages;
+        pagenum = header.header_page().num_pages;
 
-        page_t new_page;
-        memset(&new_page, 0, PAGE_SIZE);
+        Page new_page(pagenum);
+        new_page.clear();
 
-        if (!file_write_page(pagenum, &new_page))
-            return false;
+        CHECK_FAILURE(new_page.commit());
 
-        ++header_->num_pages;
+        ++header.header_page().num_pages;
     }
 
-    update_header();
-    return true;
+    return header.commit();
 }
 
 bool FileManager::file_free_page(pagenum_t pagenum)
 {
-    page_t new_page;
-    memset(&new_page, 0, PAGE_SIZE);
+    Page header;
 
-    if (header_->free_page_number == NULL_PAGE_NUM)
+    CHECK_FAILURE(header.load());
+
+    if (header.header_page().free_page_number == NULL_PAGE_NUM)
     {
-        header_->free_page_number = pagenum;
-        if (!update_header())
-            return false;
+        header.header_page().free_page_number = pagenum;
+        CHECK_FAILURE(header.commit());
     }
     else
     {
-        page_t last_free_page;
-        if (!file_read_page(header_->free_page_number, &last_free_page))
-            return false;
+        Page last_free_page(header.header_page().free_page_number);
 
-        last_free_page.free_header.next_free_page_number = header_->num_pages;
-        if (!file_write_page(header_->free_page_number, &last_free_page))
-            return false;
+        CHECK_FAILURE(last_free_page.load());
+
+        last_free_page.free_header().next_free_page_number = header.header_page().num_pages;
+        
+        CHECK_FAILURE(last_free_page.commit());
     }
 
-    return file_write_page(pagenum, &new_page);
+    Page free_page(pagenum);
+
+    CHECK_FAILURE(free_page.load());
+
+    free_page.free_header().next_free_page_number = 0;
+
+    return free_page.commit();
 }
 
 bool FileManager::file_read_page(pagenum_t pagenum, page_t* dest)
@@ -130,7 +129,7 @@ bool FileManager::file_write_page(pagenum_t pagenum, const page_t* src)
 
 bool FileManager::read(size_t size, size_t offset, void* value)
 {
-    return pread(file_handle_, value, size, offset) > 0;
+    return pread(file_handle_, value, size, offset) >= 0;
 }
 
 bool FileManager::write(size_t size, size_t offset, const void* value)
@@ -145,22 +144,27 @@ bool FileManager::write(size_t size, size_t offset, const void* value)
 pagenum_t file_alloc_page()
 {
     pagenum_t alloced_page_num = NULL_PAGE_NUM;
-    FileManager::get().file_alloc_page(alloced_page_num);
+
+    if (!FileManager::get().file_alloc_page(alloced_page_num))
+        exit(EXIT_FAILURE);
 
     return alloced_page_num;
 }
 
 void file_free_page(pagenum_t pagenum)
 {
-    FileManager::get().file_free_page(pagenum);
+    if (!FileManager::get().file_free_page(pagenum))
+        exit(EXIT_FAILURE);
 }
 
 void file_read_page(pagenum_t pagenum, page_t* dest)
 {
-    FileManager::get().file_read_page(pagenum, dest);
+    if (!FileManager::get().file_read_page(pagenum, dest))
+        exit(EXIT_FAILURE);
 }
 
 void file_write_page(pagenum_t pagenum, const page_t* src)
 {
-    FileManager::get().file_write_page(pagenum, src);
+    if (!FileManager::get().file_write_page(pagenum, src))
+        exit(EXIT_FAILURE);
 }

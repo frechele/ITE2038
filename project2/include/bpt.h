@@ -1,7 +1,7 @@
 #ifndef BPT_H_
 #define BPT_H_
 
-#include "file.h"
+#include "page.h"
 
 #include <optional>
 #include <string>
@@ -11,16 +11,14 @@
 class BPTree
 {
  public:
-    static constexpr size_t INTERNAL_ORDER = PAGE_BRANCHES_IN_PAGE + 1;
-    static constexpr size_t LEAF_ORDER = PAGE_DATA_IN_PAGE + 1;
-
-    using node_t = std::tuple<pagenum_t, page_ptr_t>;
+    static constexpr int INTERNAL_ORDER = PAGE_BRANCHES_IN_PAGE + 1;
+    static constexpr int LEAF_ORDER = PAGE_DATA_IN_PAGE + 1;
 
  public:
     static BPTree& get();
 
-    bool open(const std::string& filename);
-    bool is_open() const;
+    [[nodiscard]] bool open(const std::string& filename);
+    [[nodiscard]] bool is_open() const;
 
     [[nodiscard]] bool insert(const page_data_t& record);
     [[nodiscard]] bool remove(int64_t key);
@@ -28,25 +26,25 @@ class BPTree
     [[nodiscard]] std::vector<page_data_t> find_range(int64_t key_start,
                                                       int64_t key_end) const;
 
-    std::string to_string() const;
+    [[nodiscard]] std::string to_string() const;
 
  private:
-    node_t make_node(bool is_leaf) const;
+    [[nodiscard]] Page make_node(bool is_leaf) const;
 
-    node_t find_leaf(int64_t key) const;
-    int path_to_root(pagenum_t child) const;
+    [[nodiscard]] Page find_leaf(int64_t key) const;
+    [[nodiscard]] int path_to_root(pagenum_t child) const;
 
     // insert operation helper methods
-    void insert_into_leaf(node_t& leaf_node, const page_data_t& record);
-    void insert_into_parent(node_t& left_node, node_t& right_node, int64_t key);
-    void insert_into_new_root(node_t& left_node, node_t& right_node,
+    [[nodiscard]] bool insert_into_leaf(Page& leaf, const page_data_t& record);
+    [[nodiscard]] bool insert_into_parent(Page& left, Page& right, int64_t key);
+    [[nodiscard]] bool insert_into_new_root(Page& left, Page& right,
                               int64_t key);
-    void insert_into_node(node_t& parent_node, int left_index,
-                          pagenum_t right_num, int64_t key);
-    void insert_into_leaf_after_splitting(node_t& leaf_node,
+    [[nodiscard]] bool insert_into_node(Page& parent, int left_index,
+                          Page& right, int64_t key);
+    [[nodiscard]] bool insert_into_leaf_after_splitting(Page& leaf,
                                           const page_data_t& record);
-    void insert_into_node_after_splitting(node_t& old_node, int left_index,
-                                          pagenum_t right_num, int64_t key);
+    [[nodiscard]] bool insert_into_node_after_splitting(Page& old, int left_index,
+                                          Page& right, int64_t key);
 
  private:
     pagenum_t root_page_{ NULL_PAGE_NUM };

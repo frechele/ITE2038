@@ -17,9 +17,6 @@ class FileManager final
 
     [[nodiscard]] bool is_open() const;
 
-    header_page_t* header() const;
-    [[nodiscard]] bool update_header();
-
     [[nodiscard]] bool file_alloc_page(pagenum_t& pagenum);
     [[nodiscard]] bool file_free_page(pagenum_t pagenum);
     [[nodiscard]] bool file_read_page(pagenum_t pagenum, page_t* dest);
@@ -31,7 +28,6 @@ class FileManager final
 
  private:
     int file_handle_{ -1 };
-    header_page_t* header_{ nullptr };
 };
 
 // Allocate an on-disk page from the free page list
