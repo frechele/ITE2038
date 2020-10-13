@@ -92,28 +92,12 @@ bool FileManager::file_free_page(pagenum_t pagenum)
 
     CHECK_FAILURE(header.load());
 
-    if (header.header_page().free_page_number == NULL_PAGE_NUM)
-    {
-        header.header_page().free_page_number = pagenum;
-        CHECK_FAILURE(header.commit());
-    }
-    else
-    {
-        Page last_free_page(header.header_page().free_page_number);
-
-        CHECK_FAILURE(last_free_page.load());
-
-        last_free_page.free_header().next_free_page_number = header.header_page().num_pages;
-        
-        CHECK_FAILURE(last_free_page.commit());
-    }
-
     Page free_page(pagenum);
+    free_page.free_header().next_free_page_number = header.header_page().free_page_number;
 
-    CHECK_FAILURE(free_page.load());
-
-    free_page.free_header().next_free_page_number = 0;
-
+    header.header_page().free_page_number = pagenum;
+    
+    CHECK_FAILURE(header.commit());
     return free_page.commit();
 }
 

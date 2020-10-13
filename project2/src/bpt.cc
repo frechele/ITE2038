@@ -8,6 +8,8 @@
 #include <queue>
 #include <sstream>
 
+#include <assert.h>
+
 namespace
 {
 constexpr int cut(int length)
@@ -29,6 +31,38 @@ int get_left_index(const Page& parent, pagenum_t left_num)
         ++left_index;
 
     return left_index + 1;
+}
+
+int get_neighbor_index(const Page& parent, const Page& node)
+{
+    const pagenum_t pagenum = node.pagenum();
+    const int num_keys = parent.header().num_keys;
+    const auto branches = parent.branches();
+    for (int i = -1; i < num_keys; ++i)
+    {
+        const pagenum_t j = (i == -1) ? parent.header().page_a_number
+                                      : branches[i].child_page_number;
+
+        if (j == pagenum)
+            return i;
+    }
+
+    return num_keys;
+}
+
+template <typename T>
+int binary_search_key(T* data, int size, int64_t key)
+{
+    const auto end = data + size;
+
+    auto it = std::lower_bound(data, end, key, [](const auto& lhs, auto rhs) {
+        return lhs.key < rhs;
+    });
+
+    if (it == end || (*it).key != key)
+        return size;
+
+    return std::distance(data, it);
 }
 }  // namespace
 
@@ -102,7 +136,13 @@ bool BPTree::insert(const page_data_t& record)
 
 bool BPTree::remove(int64_t key)
 {
-    return false;
+    auto record = find(key);
+    CHECK_FAILURE(record);
+
+    auto leaf = find_leaf(key);
+    CHECK_FAILURE(leaf.pagenum() != NULL_PAGE_NUM);
+
+    return delete_entry(std::move(leaf), key);
 }
 
 std::optional<page_data_t> BPTree::find(int64_t key) const
@@ -112,10 +152,7 @@ std::optional<page_data_t> BPTree::find(int64_t key) const
         return std::nullopt;
 
     const int num_keys = page.header().num_keys;
-    int i = 0;
-    for (; i < num_keys; ++i)
-        if (page.data()[i].key == key)
-            break;
+    int i = binary_search_key(page.data(), num_keys, key);
 
     if (i == num_keys)
         return std::nullopt;
@@ -203,8 +240,7 @@ std::string BPTree::to_string() const
             for (int i = 0; i < num_keys; ++i)
                 ss << (is_leaf ? data[i].key : branches[i].key) << ' ';
 
-            if (!is_leaf &&
-                page_a_number != NULL_PAGE_NUM)
+            if (!is_leaf && page_a_number != NULL_PAGE_NUM)
             {
                 queue.emplace(page_a_number);
                 for (int i = 0; i < num_keys; ++i)
@@ -224,6 +260,7 @@ Page BPTree::make_node(bool is_leaf) const
 
     CHECK_FAILURE2(page.load(), Page());
 
+    page.clear();
     page.header().is_leaf = is_leaf;
 
     CHECK_FAILURE2(page.commit(), Page());
@@ -246,13 +283,13 @@ Page BPTree::find_leaf(int64_t key) const
         int child_idx = std::distance(
             branches,
             std::upper_bound(
-                branches, branches + current.header().num_keys,
-                key, [](auto lhs, const auto& rhs) { return lhs < rhs.key; }));
+                branches, branches + current.header().num_keys, key,
+                [](auto lhs, const auto& rhs) { return lhs < rhs.key; }));
 
         --child_idx;
-        current = Page((child_idx == -1)
-                       ? current.header().page_a_number
-                       : branches[child_idx].child_page_number);
+        current =
+            Page((child_idx == -1) ? current.header().page_a_number
+                                   : branches[child_idx].child_page_number);
         CHECK_FAILURE2(current.load(), Page());
     }
 
@@ -281,10 +318,9 @@ bool BPTree::insert_into_leaf(Page& leaf, const page_data_t& record)
     auto data = leaf.data();
 
     int insertion_point = std::distance(
-        data,
-        std::lower_bound(
-            data, data + num_keys, record.key,
-            [](const auto& lhs, auto rhs) { return lhs.key < rhs; }));
+        data, std::lower_bound(
+                  data, data + num_keys, record.key,
+                  [](const auto& lhs, auto rhs) { return lhs.key < rhs; }));
 
     for (int i = num_keys; i > insertion_point; --i)
         data[i] = data[i - 1];
@@ -295,8 +331,7 @@ bool BPTree::insert_into_leaf(Page& leaf, const page_data_t& record)
     return leaf.commit();
 }
 
-bool BPTree::insert_into_parent(Page& left, Page& right,
-                                int64_t key)
+bool BPTree::insert_into_parent(Page& left, Page& right, int64_t key)
 {
     // case 1 : new root
     if (left.header().parent_page_number == NULL_PAGE_NUM)
@@ -320,8 +355,7 @@ bool BPTree::insert_into_parent(Page& left, Page& right,
     return insert_into_node_after_splitting(parent, left_index, right, key);
 }
 
-bool BPTree::insert_into_new_root(Page& left, Page& right,
-                                  int64_t key)
+bool BPTree::insert_into_new_root(Page& left, Page& right, int64_t key)
 {
     Page new_root = make_node(false);
 
@@ -350,8 +384,8 @@ bool BPTree::insert_into_new_root(Page& left, Page& right,
     return true;
 }
 
-bool BPTree::insert_into_node(Page& parent, int left_index,
-                              Page& right, int64_t key)
+bool BPTree::insert_into_node(Page& parent, int left_index, Page& right,
+                              int64_t key)
 {
     const int num_keys = parent.header().num_keys;
     auto branches = parent.branches();
@@ -376,10 +410,9 @@ bool BPTree::insert_into_leaf_after_splitting(Page& leaf,
     const auto data = leaf.data();
 
     int insertion_point = std::distance(
-        data, std::lower_bound(data, data + (LEAF_ORDER - 1),
-                                     record.key, [](const auto& lhs, auto rhs) {
-                                         return lhs.key < rhs;
-                                     }));
+        data, std::lower_bound(
+                  data, data + (LEAF_ORDER - 1), record.key,
+                  [](const auto& lhs, auto rhs) { return lhs.key < rhs; }));
 
     std::array<page_data_t, LEAF_ORDER> temp_data;
     for (int i = 0, j = 0; i < num_keys; ++i, ++j)
@@ -411,7 +444,6 @@ bool BPTree::insert_into_leaf_after_splitting(Page& leaf,
     new_leaf.header().page_a_number = leaf.header().page_a_number;
     leaf.header().page_a_number = new_leaf.pagenum();
 
-    // update parent
     new_leaf.header().parent_page_number = leaf.header().parent_page_number;
 
     CHECK_FAILURE(new_leaf.commit());
@@ -477,4 +509,168 @@ bool BPTree::insert_into_node_after_splitting(Page& old, int left_index,
     CHECK_FAILURE(new_page.commit());
 
     return insert_into_parent(old, new_page, k_prime);
+}
+
+bool BPTree::delete_entry(Page node, int64_t key)
+{
+    const int is_leaf = node.header().is_leaf;
+
+    if (is_leaf)
+        remove_record_from_leaf(node, key);
+    else
+        remove_branch_from_internal(node, key);
+
+    CHECK_FAILURE(node.commit());
+
+    Page header;
+    CHECK_FAILURE(header.load());
+
+    if (header.header_page().root_page_number == node.pagenum())
+        return adjust_root(header, node);
+
+    if (node.header().num_keys > MERGE_THRESHOLD)
+        return true;
+
+    Page parent(node.header().parent_page_number);
+    CHECK_FAILURE(parent.load());
+
+    const int neighbor_index = get_neighbor_index(parent, node);
+    const int k_prime_index = (neighbor_index == -1) ? 0 : neighbor_index;
+    const int64_t k_prime = parent.branches()[k_prime_index].key;
+
+    const int left_pagenum =
+        (neighbor_index == -1)
+            ? parent.branches()[0].child_page_number
+            : ((neighbor_index == 0)
+                   ? parent.header().page_a_number
+                   : parent.branches()[neighbor_index - 1].child_page_number);
+    Page left(left_pagenum);
+    CHECK_FAILURE(left.load());
+
+    if (neighbor_index == -1)
+    {
+        std::swap(left, node);
+    }
+
+    const int capacity = is_leaf ? LEAF_ORDER : INTERNAL_ORDER - 1;
+    if (left.header().num_keys + node.header().num_keys < capacity)
+        return coalesce_nodes(parent, left, node, k_prime);
+
+    return redistribute_nodes(parent, left, node, k_prime_index, k_prime);
+}
+
+void BPTree::remove_branch_from_internal(Page& node, int64_t key)
+{
+    const int num_keys = node.header().num_keys;
+    auto branches = node.branches();
+
+    int i = binary_search_key(branches, num_keys, key);
+    for (++i; i < num_keys; ++i)
+        branches[i - 1] = branches[i];
+
+    --node.header().num_keys;
+}
+
+void BPTree::remove_record_from_leaf(Page& node, int64_t key)
+{
+    const int num_keys = node.header().num_keys;
+    auto data = node.data();
+
+    int i = binary_search_key(data, num_keys, key);
+    for (++i; i < num_keys; ++i)
+        data[i - 1] = data[i];
+
+    --node.header().num_keys;
+}
+
+bool BPTree::adjust_root(Page& header, Page& root)
+{
+    if (root.header().num_keys > 0)
+        return true;
+
+    if (root.header().is_leaf)
+    {
+        root_page_ = NULL_PAGE_NUM;
+    }
+    else
+    {
+        root_page_ = root.header().page_a_number;
+
+        Page new_root(root_page_);
+        CHECK_FAILURE(new_root.load());
+
+        new_root.header().parent_page_number = 0;
+
+        CHECK_FAILURE(new_root.commit());
+    }
+
+    CHECK_FAILURE(root.free());
+
+    header.header_page().root_page_number = root_page_;
+    return header.commit();
+}
+
+bool BPTree::coalesce_nodes(Page& parent, Page& left, Page& right,
+                            int64_t k_prime)
+{
+    const int insertion_index = left.header().num_keys;
+
+    if (right.header().is_leaf)
+    {
+        auto left_data = left.data();
+        auto right_data = right.data();
+
+        const int num_keys = right.header().num_keys;
+        for (int i = insertion_index, j = 0; j < num_keys; ++i, ++j)
+        {
+            left_data[i] = right_data[j];
+            ++left.header().num_keys;
+            --right.header().num_keys;
+        }
+
+        left.header().page_a_number = right.header().page_a_number;
+    }
+    else
+    {
+        auto left_branches = left.branches();
+        auto right_branches = right.branches();
+
+        const int n_end = right.header().num_keys;
+        const pagenum_t left_number = left.pagenum();
+
+        for (int i = insertion_index, j = -1; j < n_end; ++i, ++j)
+        {
+            if (j == -1)
+            {
+                left_branches[i].key = k_prime;
+                left_branches[i].child_page_number =
+                    right.header().page_a_number;
+            }
+            else
+            {
+                left_branches[i] = right_branches[j];
+            }
+
+            Page tmp(left_branches[i].child_page_number);
+            CHECK_FAILURE(tmp.load());
+
+            tmp.header().parent_page_number = left_number;
+
+            CHECK_FAILURE(tmp.commit());
+
+            ++left.header().num_keys;
+            --right.header().num_keys;
+        }
+    }
+
+    CHECK_FAILURE(left.commit());
+    CHECK_FAILURE(delete_entry(parent, k_prime));
+    return right.free();
+}
+
+bool BPTree::redistribute_nodes(Page& parent, Page& left, Page& right,
+                                int k_prime_index, int64_t k_prime)
+{
+    // TODO: implementation is needed?
+    return false;
 }

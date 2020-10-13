@@ -91,5 +91,9 @@ int main()
         {
             dump_debug();
         }
+        else if (cmd == "sep")
+        {
+            cout << "sep" << endl;
+        }
     }
 }

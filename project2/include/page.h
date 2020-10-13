@@ -100,6 +100,7 @@ class Page final
 
     [[nodiscard]] bool load();
     [[nodiscard]] bool commit();
+    [[nodiscard]] bool free();
 
     void clear();
 

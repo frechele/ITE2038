@@ -19,6 +19,11 @@ bool Page::commit()
     return FileManager::get().file_write_page(pagenum_, &impl_);
 }
 
+bool Page::free()
+{
+    return FileManager::get().file_free_page(pagenum_);
+}
+
 void Page::clear()
 {
     memset(&impl_, 0, PAGE_SIZE);
@@ -34,6 +39,11 @@ page_header_t& Page::header()
     return const_cast<page_header_t&>(std::as_const(*this).header());
 }
 
+const page_header_t& Page::header() const
+{
+    return impl_.node.header;
+}
+
 header_page_t& Page::header_page()
 {
     return const_cast<header_page_t&>(std::as_const(*this).header_page());
@@ -42,11 +52,6 @@ header_page_t& Page::header_page()
 const header_page_t& Page::header_page() const
 {
     return impl_.file;
-}
-
-const page_header_t& Page::header() const
-{
-    return impl_.node.header;
 }
 
 free_page_header_t& Page::free_header()
