@@ -57,9 +57,8 @@ class BPTree
     [[nodiscard]] bool adjust_root(Page& header, Page& root);
     [[nodiscard]] bool coalesce_nodes(Page& parent, Page& left, Page& right,
                                       int64_t k_prime);
-    [[nodiscard]] bool redistribute_nodes(Page& parent, Page& left,
-                                          Page& right, int k_prime_index,
-                                          int64_t k_prime);
+    [[nodiscard]] bool redistribute_nodes(Page& parent, Page& left, Page& right,
+                                          int k_prime_index, int64_t k_prime);
 
  private:
     pagenum_t root_page_{ NULL_PAGE_NUM };

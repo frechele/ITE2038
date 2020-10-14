@@ -671,6 +671,94 @@ bool BPTree::coalesce_nodes(Page& parent, Page& left, Page& right,
 bool BPTree::redistribute_nodes(Page& parent, Page& left, Page& right,
                                 int k_prime_index, int64_t k_prime)
 {
-    // TODO: implementation is needed?
-    return false;
+    const int left_num_key = left.header().num_keys;
+    const int right_num_key = right.header().num_keys;
+
+    if (left_num_key < right_num_key)
+    {
+        if (left.header().is_leaf)
+        {
+            auto left_data = left.data();
+            auto right_data = right.data();
+
+            left_data[left_num_key] = right_data[0];
+            parent.branches()[k_prime_index].key = right_data[1].key;
+
+            for (int i = 0; i < right_num_key - 1; ++i)
+                right_data[i] = right_data[i + 1];
+        }
+        else
+        {
+            auto left_branches = left.branches();
+            auto right_branches = right.branches();
+
+            left_branches[left_num_key].key = k_prime;
+            const pagenum_t moved_child_pagenum =
+                left_branches[left_num_key].child_page_number =
+                    right.header().page_a_number;
+
+            Page tmp(moved_child_pagenum);
+            CHECK_FAILURE(tmp.load());
+
+            tmp.header().parent_page_number = left.pagenum();
+
+            CHECK_FAILURE(tmp.commit());
+
+            parent.branches()[k_prime_index].key = right_branches[0].key;
+
+            right.header().page_a_number = right_branches[0].child_page_number;
+            for (int i = 0; i < right_num_key - 1; ++i)
+                right_branches[i] = right_branches[i + 1];
+        }
+
+        ++left.header().num_keys;
+        --right.header().num_keys;
+    }
+    else
+    {
+        if (left.header().is_leaf)
+        {
+            auto left_data = left.data();
+            auto right_data = right.data();
+
+            for (int i = right_num_key; i > 0; --i)
+                right_data[i] = right_data[i - 1];
+
+            right_data[0] = left_data[left_num_key - 1];
+            parent.branches()[k_prime_index].key = right_data[0].key;
+        }
+        else
+        {
+            auto left_branches = left.branches();
+            auto right_branches = right.branches();
+
+            for (int i = right_num_key; i > 0; --i)
+                right_branches[i] = right_branches[i - 1];
+
+            right_branches[0].key = k_prime;
+            const pagenum_t moved_child_pagenum =
+                right_branches[0].child_page_number =
+                    right.header().page_a_number;
+
+            Page tmp(moved_child_pagenum);
+            CHECK_FAILURE(tmp.load());
+
+            tmp.header().parent_page_number = right.pagenum();
+
+            CHECK_FAILURE(tmp.commit());
+
+            parent.branches()[k_prime_index].key =
+                left_branches[left_num_key - 1].key;
+
+            right.header().page_a_number =
+                left_branches[left_num_key - 1].child_page_number;
+        }
+
+        --left.header().num_keys;
+        ++right.header().num_keys;
+    }
+
+    CHECK_FAILURE(left.commit());
+    CHECK_FAILURE(right.commit());
+    return parent.commit();
 }
