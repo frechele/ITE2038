@@ -87,13 +87,5 @@ int main()
                 cout << "delete " << key << " failed." << endl;
             }
         }
-        else if (cmd == "print")
-        {
-            dump_debug();
-        }
-        else if (cmd == "sep")
-        {
-            cout << "sep" << endl;
-        }
     }
 }

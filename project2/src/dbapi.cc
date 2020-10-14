@@ -49,11 +49,3 @@ int db_delete(int64_t key)
 
     return BPTree::get().remove(key) ? SUCCESS : FAIL;
 }
-
-void dump_debug()
-{
-    if (BPTree::get().is_open())
-    {
-        std::cout << BPTree::get().to_string() << std::endl;
-    }
-}
