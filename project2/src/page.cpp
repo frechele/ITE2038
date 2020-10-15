@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <memory.h>
+#include <utility>
 
 Page::Page(pagenum_t pagenum) noexcept : pagenum_(pagenum)
 {

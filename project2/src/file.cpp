@@ -1,6 +1,7 @@
 #include "file.h"
 
 #include "common.h"
+#include "page.h"
 
 #include <fcntl.h>
 #include <memory.h>
