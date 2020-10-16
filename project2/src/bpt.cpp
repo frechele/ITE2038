@@ -604,10 +604,10 @@ bool BPTree::adjust_root(Page& header, Page& root)
         CHECK_FAILURE(new_root.commit());
     }
 
-    CHECK_FAILURE(root.free());
-
     header.header_page().root_page_number = root_page_;
-    return header.commit();
+    CHECK_FAILURE(header.commit());
+
+    return root.free();
 }
 
 bool BPTree::coalesce_nodes(Page& parent, Page& left, Page& right,
