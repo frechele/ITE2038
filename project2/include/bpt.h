@@ -5,7 +5,6 @@
 
 #include <optional>
 #include <string>
-#include <tuple>
 #include <vector>
 
 class BPTree

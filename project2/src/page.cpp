@@ -2,7 +2,6 @@
 
 #include "file.h"
 
-#include <assert.h>
 #include <memory.h>
 #include <utility>
 

@@ -3,7 +3,7 @@
 #include "bpt.h"
 #include "common.h"
 
-#include <string.h>
+#include <cstring>
 
 #include <iostream>
 

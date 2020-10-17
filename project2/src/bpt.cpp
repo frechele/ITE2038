@@ -1,14 +1,12 @@
 #include "bpt.h"
 
+#include "common.h"
 #include "file.h"
 
-#include <string.h>
 #include <algorithm>
 #include <array>
 #include <queue>
 #include <sstream>
-
-#include <assert.h>
 
 namespace
 {

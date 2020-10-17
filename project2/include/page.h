@@ -1,7 +1,6 @@
 #ifndef PAGE_H_
 #define PAGE_H_
 
-#include "common.h"
 #include "file.h"
 
 class Page final
