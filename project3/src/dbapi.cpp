@@ -7,6 +7,16 @@
 
 #include <iostream>
 
+int init_db(int num_buf)
+{
+    return FAIL;
+}
+
+int shtudown_db()
+{
+    return FAIL;
+}
+
 int open_table(char* pathname)
 {
     static int TABLE_COUNT = 0;
@@ -17,7 +27,12 @@ int open_table(char* pathname)
     return TABLE_COUNT++;
 }
 
-int db_insert(int64_t key, char* value)
+int close_table(int table_id)
+{
+    return FAIL;
+}
+
+int db_insert(int table_id, int64_t key, char* value)
 {
     if (!BPTree::get().is_open())
         return FAIL;
@@ -29,7 +44,7 @@ int db_insert(int64_t key, char* value)
     return BPTree::get().insert(record) ? SUCCESS : FAIL;
 }
 
-int db_find(int64_t key, char* ret_val)
+int db_find(int table_id, int64_t key, char* ret_val)
 {
     if (!BPTree::get().is_open())
         return FAIL;
@@ -42,7 +57,7 @@ int db_find(int64_t key, char* ret_val)
     return SUCCESS;
 }
 
-int db_delete(int64_t key)
+int db_delete(int table_id, int64_t key)
 {
     if (!BPTree::get().is_open())
         return FAIL;
