@@ -7,18 +7,26 @@
 #include <memory.h>
 #include <unistd.h>
 
-FileManager& FileManager::get()
-{
-    static FileManager instance;
-    return instance;
-}
-
-FileManager::~FileManager()
+File::~File()
 {
     close();
 }
 
-bool FileManager::open(const std::string& filename)
+File::File(File&& other)
+{
+    file_handle_ = other.file_handle_;
+    other.file_handle_ = -1;
+}
+
+File& File::operator=(File&& other)
+{
+    file_handle_ = other.file_handle_;
+    other.file_handle_ = -1;
+
+    return *this;
+}
+
+bool File::open(const std::string& filename)
 {
     if (is_open())
         close();
@@ -42,7 +50,7 @@ bool FileManager::open(const std::string& filename)
     return true;
 }
 
-void FileManager::close()
+void File::close()
 {
     if (!is_open())
         return;
@@ -50,74 +58,73 @@ void FileManager::close()
     ::close(file_handle_);
 }
 
-bool FileManager::is_open() const
+bool File::is_open() const
 {
     return file_handle_ > 0;
 }
 
-bool FileManager::file_alloc_page(pagenum_t& pagenum)
+bool File::file_alloc_page(pagenum_t& pagenum)
 {
     pagenum = NULL_PAGE_NUM;
 
-    Page header;
+    page_t header;
+    CHECK_FAILURE(file_read_page(0, &header));
 
-    CHECK_FAILURE(header.load());
-    if (header.header_page().free_page_number != NULL_PAGE_NUM)
+    if (header.file.free_page_number != NULL_PAGE_NUM)
     {
-        Page free_page(header.header_page().free_page_number);
+        const pagenum_t free_page_number = header.file.free_page_number;
+        page_t free_page;
+        CHECK_FAILURE(file_read_page(free_page_number, &free_page));
 
-        CHECK_FAILURE(free_page.load());
+        pagenum = header.file.free_page_number;
 
-        pagenum = header.header_page().free_page_number;
-
-        header.header_page().free_page_number = free_page.free_header().next_free_page_number;
+        header.file.free_page_number = free_page.node.free_header.next_free_page_number;
     }
     else
     {
-        pagenum = header.header_page().num_pages;
+        pagenum = header.file.num_pages;
 
-        Page new_page(pagenum);
-        new_page.clear();
+        page_t new_page;
+        memset(&new_page, 0, PAGE_SIZE);
 
-        CHECK_FAILURE(new_page.commit());
+        CHECK_FAILURE(file_write_page(pagenum, &new_page));
 
-        ++header.header_page().num_pages;
+        ++header.file.num_pages;
     }
 
-    return header.commit();
+    return file_write_page(0, &header);
 }
 
-bool FileManager::file_free_page(pagenum_t pagenum)
+bool File::file_free_page(pagenum_t pagenum)
 {
-    Page header;
+    page_t header;
+    CHECK_FAILURE(file_read_page(0, &header));
 
-    CHECK_FAILURE(header.load());
+    page_t free_page;
+    free_page.node.free_header.next_free_page_number = header.file.free_page_number;
 
-    Page free_page(pagenum);
-    free_page.free_header().next_free_page_number = header.header_page().free_page_number;
-
-    header.header_page().free_page_number = pagenum;
+    header.file.free_page_number = pagenum;
     
-    CHECK_FAILURE(header.commit());
-    return free_page.commit();
+    CHECK_FAILURE(file_write_page(0, &header));
+    return file_write_page(pagenum, &free_page);
 }
 
-bool FileManager::file_read_page(pagenum_t pagenum, page_t* dest)
+bool File::file_read_page(pagenum_t pagenum, page_t* dest)
 {
     return read(PAGE_SIZE, pagenum * PAGE_SIZE, dest);
 }
 
-bool FileManager::file_write_page(pagenum_t pagenum, const page_t* src)
+bool File::file_write_page(pagenum_t pagenum, const page_t* src)
 {
     return write(PAGE_SIZE, pagenum * PAGE_SIZE, src);
 }
 
-bool FileManager::read(size_t size, size_t offset, void* value)
+bool File::read(size_t size, size_t offset, void* value)
 {
     return pread(file_handle_, value, size, offset) >= 0;
 }
 
-bool FileManager::write(size_t size, size_t offset, const void* value)
+bool File::write(size_t size, size_t offset, const void* value)
 {
     if (pwrite(file_handle_, value, size, offset) == -1)
         return false;
@@ -126,30 +133,81 @@ bool FileManager::write(size_t size, size_t offset, const void* value)
     return true;
 }
 
-pagenum_t file_alloc_page()
+TableManager& TableManager::get()
+{
+    static TableManager instance;
+    return instance;
+}
+
+File& TableManager::get(int table_id)
+{
+    return get().tables_[table_id];
+}
+
+std::optional<int> TableManager::open_table(const std::string& filename)
+{
+    CHECK_FAILURE2(tables_.size() < MAX_TABLE_COUNT, std::nullopt);
+
+    int table_id = 1;
+    for (int t : table_indicies_)
+    {
+        if (t > table_id)
+            break;
+
+        ++table_id;
+    }
+
+    File file;
+    CHECK_FAILURE2(file.open(filename), std::nullopt);
+
+    table_indicies_.emplace(table_id);
+    tables_.insert_or_assign(table_id, std::move(file));
+    return table_id;
+}
+
+bool TableManager::close_table(int table_id)
+{
+    auto it = tables_.find(table_id);
+    
+    if (it == end(tables_))
+        return false;
+
+    table_indicies_.erase(it->first);
+    it->second.close();
+    tables_.erase(it);
+
+    return true;
+}
+
+bool TableManager::is_open(int table_id) const
+{
+    return tables_.find(table_id) != end(tables_);
+}
+
+pagenum_t file_alloc_page(int table_id)
 {
     pagenum_t alloced_page_num = NULL_PAGE_NUM;
 
-    if (!FileManager::get().file_alloc_page(alloced_page_num))
+    if (!TableManager::get(table_id).file_alloc_page(alloced_page_num))
         exit(EXIT_FAILURE);
 
     return alloced_page_num;
 }
 
-void file_free_page(pagenum_t pagenum)
+void file_free_page(int table_id, pagenum_t pagenum)
 {
-    if (!FileManager::get().file_free_page(pagenum))
+    if (!TableManager::get(table_id).file_free_page(pagenum))
         exit(EXIT_FAILURE);
 }
 
-void file_read_page(pagenum_t pagenum, page_t* dest)
+void file_read_page(int table_id, pagenum_t pagenum, page_t* dest)
 {
-    if (!FileManager::get().file_read_page(pagenum, dest))
+    if (!TableManager::get(table_id).file_read_page(pagenum, dest))
         exit(EXIT_FAILURE);
 }
 
-void file_write_page(pagenum_t pagenum, const page_t* src)
+void file_write_page(int table_id, pagenum_t pagenum, const page_t* src)
 {
-    if (!FileManager::get().file_write_page(pagenum, src))
+    if (!TableManager::get(table_id).file_write_page(pagenum, src))
         exit(EXIT_FAILURE);
 }

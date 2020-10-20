@@ -18,49 +18,57 @@ class BPTree
  public:
     static BPTree& get();
 
-    [[nodiscard]] bool open(const std::string& filename);
-    [[nodiscard]] bool is_open() const;
+    [[nodiscard]] int open_table(const std::string& filename);
+    [[nodiscard]] bool close_table(int table_id);
+    [[nodiscard]] bool is_open(int table_id) const;
 
-    [[nodiscard]] bool insert(const page_data_t& record);
-    [[nodiscard]] bool remove(int64_t key);
-    [[nodiscard]] std::optional<page_data_t> find(int64_t key) const;
-    [[nodiscard]] std::vector<page_data_t> find_range(int64_t key_start,
+    [[nodiscard]] bool insert(int table_id, const page_data_t& record);
+    [[nodiscard]] bool remove(int table_id, int64_t key);
+    [[nodiscard]] std::optional<page_data_t> find(int table_id,
+                                                  int64_t key) const;
+    [[nodiscard]] std::vector<page_data_t> find_range(int table_id,
+                                                      int64_t key_start,
                                                       int64_t key_end) const;
 
-    [[nodiscard]] std::string to_string() const;
+    [[nodiscard]] std::string to_string(int table_id) const;
 
  private:
-    [[nodiscard]] Page make_node(bool is_leaf) const;
+    [[nodiscard]] std::optional<Page> make_node(Page& header,
+                                                bool is_leaf) const;
 
-    [[nodiscard]] Page find_leaf(int64_t key) const;
-    [[nodiscard]] int path_to_root(pagenum_t child) const;
+    [[nodiscard]] std::optional<page_data_t> find(Page& header,
+                                                  int64_t key) const;
+    [[nodiscard]] std::optional<Page> find_leaf(Page& header,
+                                                int64_t key) const;
+    [[nodiscard]] int path_to_root(Page& header, pagenum_t child) const;
 
     // insert operation helper methods
-    [[nodiscard]] bool insert_into_leaf(Page& leaf, const page_data_t& record);
-    [[nodiscard]] bool insert_into_parent(Page& left, Page& right, int64_t key);
-    [[nodiscard]] bool insert_into_new_root(Page& left, Page& right,
-                                            int64_t key);
-    [[nodiscard]] bool insert_into_node(Page& parent, int left_index,
-                                        Page& right, int64_t key);
+    [[nodiscard]] bool insert_into_leaf(Page& header, Page& leaf,
+                                        const page_data_t& record);
+    [[nodiscard]] bool insert_into_parent(Page& header, Page& left, Page& right,
+                                          int64_t key);
+    [[nodiscard]] bool insert_into_new_root(Page& header, Page& left,
+                                            Page& right, int64_t key);
+    [[nodiscard]] bool insert_into_node(Page& header, Page& parent,
+                                        int left_index, Page& right,
+                                        int64_t key);
     [[nodiscard]] bool insert_into_leaf_after_splitting(
-        Page& leaf, const page_data_t& record);
-    [[nodiscard]] bool insert_into_node_after_splitting(Page& old,
+        Page& header, Page& leaf, const page_data_t& record);
+    [[nodiscard]] bool insert_into_node_after_splitting(Page& header, Page& old,
                                                         int left_index,
                                                         Page& right,
                                                         int64_t key);
 
     // delete operation helper methods
-    [[nodiscard]] bool delete_entry(Page node, int64_t key);
-    void remove_branch_from_internal(Page& node, int64_t key);
-    void remove_record_from_leaf(Page& node, int64_t key);
+    [[nodiscard]] bool delete_entry(Page& header, Page node, int64_t key);
+    void remove_branch_from_internal(Page& header, Page& node, int64_t key);
+    void remove_record_from_leaf(Page& header, Page& node, int64_t key);
     [[nodiscard]] bool adjust_root(Page& header, Page& root);
-    [[nodiscard]] bool coalesce_nodes(Page& parent, Page& left, Page& right,
-                                      int64_t k_prime);
-    [[nodiscard]] bool redistribute_nodes(Page& parent, Page& left, Page& right,
+    [[nodiscard]] bool coalesce_nodes(Page& header, Page& parent, Page& left,
+                                      Page& right, int64_t k_prime);
+    [[nodiscard]] bool redistribute_nodes(Page& header, Page& parent,
+                                          Page& left, Page& right,
                                           int k_prime_index, int64_t k_prime);
-
- private:
-    pagenum_t root_page_{ NULL_PAGE_NUM };
 };
 
 #endif  // BPT_H_

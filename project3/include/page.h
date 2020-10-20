@@ -6,8 +6,8 @@
 class Page final
 {
  public:
-    Page() noexcept = default;
-    explicit Page(pagenum_t pagenum) noexcept;
+    explicit Page(int table_id) noexcept;
+    Page(int table_id, pagenum_t pagenum) noexcept;
 
     [[nodiscard]] bool load();
     [[nodiscard]] bool commit();
@@ -16,6 +16,7 @@ class Page final
     void clear();
 
     [[nodiscard]] pagenum_t pagenum() const noexcept;
+    [[nodiscard]] int table_id() const noexcept;
 
     [[nodiscard]] header_page_t& header_page();
     [[nodiscard]] const header_page_t& header_page() const;
@@ -30,6 +31,7 @@ class Page final
     [[nodiscard]] const page_data_t* data() const;
 
  private:
+    int table_id_{ -1 };
     pagenum_t pagenum_{ NULL_PAGE_NUM };
     page_t impl_;
 };

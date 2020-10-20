@@ -19,37 +19,35 @@ int shtudown_db()
 
 int open_table(char* pathname)
 {
-    static int TABLE_COUNT = 0;
+    if (int table_id = BPTree::get().open_table(pathname); table_id != -1)
+        return table_id;
 
-    if (!BPTree::get().open(pathname))
-        return -1;
-
-    return TABLE_COUNT++;
+    return -1;
 }
 
 int close_table(int table_id)
 {
-    return FAIL;
+    return BPTree::get().close_table(table_id) ? SUCCESS : FAIL;
 }
 
 int db_insert(int table_id, int64_t key, char* value)
 {
-    if (!BPTree::get().is_open())
+    if (!BPTree::get().is_open(table_id))
         return FAIL;
 
     page_data_t record;
     record.key = key;
     strncpy(record.value, value, PAGE_DATA_VALUE_SIZE);
 
-    return BPTree::get().insert(record) ? SUCCESS : FAIL;
+    return BPTree::get().insert(table_id, record) ? SUCCESS : FAIL;
 }
 
 int db_find(int table_id, int64_t key, char* ret_val)
 {
-    if (!BPTree::get().is_open())
+    if (!BPTree::get().is_open(table_id))
         return FAIL;
 
-    auto res = BPTree::get().find(key);
+    auto res = BPTree::get().find(table_id, key);
     if (!res)
         return FAIL;
 
@@ -59,8 +57,8 @@ int db_find(int table_id, int64_t key, char* ret_val)
 
 int db_delete(int table_id, int64_t key)
 {
-    if (!BPTree::get().is_open())
+    if (!BPTree::get().is_open(table_id))
         return FAIL;
 
-    return BPTree::get().remove(key) ? SUCCESS : FAIL;
+    return BPTree::get().remove(table_id, key) ? SUCCESS : FAIL;
 }

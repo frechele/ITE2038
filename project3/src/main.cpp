@@ -35,8 +35,21 @@ int main()
             }
             else
             {
-                cout << "open table " << arg << "(id : " << table_id << ")." << endl;
+                cout << "open table " << arg << " (id : " << table_id << ")." << endl;
             }
+        }
+        else if (cmd == "close")
+        {
+            cin >> table_id;
+
+            if (SUCCESSED(close_table(table_id)))
+            {
+                cout << "close table successed." << endl;
+            }
+            else
+            {
+                cout << "close table failed." << endl;
+            }            
         }
         else if (cmd == "quit")
         {

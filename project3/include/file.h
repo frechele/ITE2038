@@ -1,8 +1,11 @@
 #ifndef FILE_H_
 #define FILE_H_
 
+#include <set>
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <unordered_map>
 
 // SIZE CONSTANTS
 constexpr size_t PAGE_DATA_VALUE_SIZE = 120;
@@ -89,15 +92,17 @@ union page_t
     } node;
 };
 
-class FileManager final
+class File final
 {
  public:
-    static FileManager& get();
+    ~File();
 
-    ~FileManager();
-
-    [[nodiscard]] bool open(const std::string& filename);
-    void close();
+    File() = default;
+    File(const File&) = delete;
+    File& operator=(const File&) = delete;
+    
+    File(File&& other);
+    File& operator=(File&& other);  
 
     [[nodiscard]] bool is_open() const;
 
@@ -107,26 +112,51 @@ class FileManager final
     [[nodiscard]] bool file_write_page(pagenum_t pagenum, const page_t* src);
 
  private:
+    [[nodiscard]] bool open(const std::string& filename);
+    void close();
+
     [[nodiscard]] bool read(size_t size, size_t offset, void* value);
     [[nodiscard]] bool write(size_t size, size_t offset, const void* value);
 
  private:
     int file_handle_{ -1 };
+
+    friend class TableManager;
 };
 
-extern "C"
+class TableManager final
 {
+ public:
+    static constexpr size_t MAX_TABLE_COUNT = 10;
+
+ public:
+    static TableManager& get();
+    static File& get(int table_id);
+
+    [[nodiscard]] std::optional<int> open_table(const std::string& filename);
+    [[nodiscard]] bool close_table(int table_id);
+    [[nodiscard]] bool is_open(int table_id) const;
+
+ private:
+    TableManager() = default;
+
+ private:
+    std::set<int> table_indicies_;
+    std::unordered_map<int, File> tables_;
+};
+
+extern "C" {
 // Allocate an on-disk page from the free page list
-pagenum_t file_alloc_page();
+pagenum_t file_alloc_page(int table_id);
 
 // Free an on-disk page to the free page list
-void file_free_page(pagenum_t pagenum);
+void file_free_page(int table_id, pagenum_t pagenum);
 
 // Read an on-disk page into the in-memory page structure(dest)
-void file_read_page(pagenum_t pagenum, page_t* dest);
+void file_read_page(int table_id, pagenum_t pagenum, page_t* dest);
 
 // Write an in-memory page(src) to the on-disk page
-void file_write_page(pagenum_t pagenum, const page_t* src);
+void file_write_page(int table_id, pagenum_t pagenum, const page_t* src);
 }
 
 #endif  // FILE_H_

@@ -5,23 +5,28 @@
 #include <memory.h>
 #include <utility>
 
-Page::Page(pagenum_t pagenum) noexcept : pagenum_(pagenum)
+Page::Page(int table_id) noexcept : table_id_(table_id)
+{
+}
+
+Page::Page(int table_id, pagenum_t pagenum) noexcept
+    : table_id_(table_id), pagenum_(pagenum)
 {
 }
 
 bool Page::load()
 {
-    return FileManager::get().file_read_page(pagenum_, &impl_);
+    return TableManager::get(table_id_).file_read_page(pagenum_, &impl_);
 }
 
 bool Page::commit()
 {
-    return FileManager::get().file_write_page(pagenum_, &impl_);
+    return TableManager::get(table_id_).file_write_page(pagenum_, &impl_);
 }
 
 bool Page::free()
 {
-    return FileManager::get().file_free_page(pagenum_);
+    return TableManager::get(table_id_).file_free_page(pagenum_);
 }
 
 void Page::clear()
@@ -32,6 +37,11 @@ void Page::clear()
 pagenum_t Page::pagenum() const noexcept
 {
     return pagenum_;
+}
+
+int Page::table_id() const noexcept
+{
+    return table_id_;
 }
 
 page_header_t& Page::header()
