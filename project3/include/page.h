@@ -10,7 +10,7 @@ class Page final
     Page(BufferBlock& block);
 
     void clear();
-	void mark_dirty();
+    void mark_dirty();
 
     void lock();
     void unlock();
@@ -18,7 +18,7 @@ class Page final
     [[nodiscard]] bool free();
 
     [[nodiscard]] pagenum_t pagenum() const;
-    [[nodiscard]] int table_id() const;
+    [[nodiscard]] TableID table_id() const;
 
     [[nodiscard]] header_page_t& header_page();
     [[nodiscard]] const header_page_t& header_page() const;
@@ -33,16 +33,16 @@ class Page final
     [[nodiscard]] const page_data_t* data() const;
 
  private:
-	BufferBlock& block_;
+    BufferBlock& block_;
 };
 
 class ScopedPageLock final
 {
-public:
+ public:
     ScopedPageLock(Page& page);
     ~ScopedPageLock();
 
-private:
+ private:
     Page& page_;
 };
 

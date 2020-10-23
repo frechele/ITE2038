@@ -139,47 +139,44 @@ TableManager& TableManager::get()
     return instance;
 }
 
-File& TableManager::get(int table_id)
+File& TableManager::get(TableID table_id)
 {
     return get().tables_[table_id];
 }
 
-std::optional<int> TableManager::open_table(const std::string& filename)
+std::optional<TableID> TableManager::open_table(const std::string& filename)
 {
-    CHECK_FAILURE2(tables_.size() < MAX_TABLE_COUNT, std::nullopt);
-
-    int table_id = 1;
-    for (int t : table_indicies_)
+    auto it = table_id_tbl_.find(filename);
+    if (it != end(table_id_tbl_))
     {
-        if (t > table_id)
-            break;
-
-        ++table_id;
+        return it->second;
     }
+
+    CHECK_FAILURE2(table_id_tbl_.size() < MAX_TABLE_COUNT, std::nullopt);
 
     File file;
     CHECK_FAILURE2(file.open(filename), std::nullopt);
 
-    table_indicies_.emplace(table_id);
+    const TableID table_id = TableID(table_id_tbl_.size() + 1);
+    table_id_tbl_.insert_or_assign(filename, table_id);
     tables_.insert_or_assign(table_id, std::move(file));
     return table_id;
 }
 
-bool TableManager::close_table(int table_id)
+bool TableManager::close_table(TableID table_id)
 {
     auto it = tables_.find(table_id);
     
     if (it == end(tables_))
         return false;
 
-    table_indicies_.erase(it->first);
     it->second.close();
     tables_.erase(it);
 
     return true;
 }
 
-bool TableManager::is_open(int table_id) const
+bool TableManager::is_open(TableID table_id) const
 {
     return tables_.find(table_id) != end(tables_);
 }

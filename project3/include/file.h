@@ -1,12 +1,12 @@
 #ifndef FILE_H_
 #define FILE_H_
 
-#include <set>
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <string>
-#include <unordered_map>
 #include <tuple>
+#include <unordered_map>
 
 // SIZE CONSTANTS
 constexpr size_t PAGE_DATA_VALUE_SIZE = 120;
@@ -31,7 +31,36 @@ constexpr size_t HEADER_PAGE_RESERVED = PAGE_SIZE - HEADER_PAGE_USED;
 
 // TYPES
 using pagenum_t = uint64_t;
-using table_page_t = std::tuple<int, pagenum_t>;
+
+class TableID final
+{
+ public:
+    constexpr TableID() noexcept = default;
+    constexpr explicit TableID(int table_id) noexcept : table_id_(table_id)
+    {
+    }
+
+    constexpr operator int() const noexcept
+    {
+        return table_id_;
+    }
+
+ private:
+    int table_id_{ -1 };
+};
+namespace std
+{
+template <>
+struct hash<TableID>
+{
+    std::size_t operator()(const TableID& tid) const
+    {
+        return hash<int>()(tid);
+    }
+};
+}  // namespace std
+
+using table_page_t = std::tuple<TableID, pagenum_t>;
 constexpr pagenum_t NULL_PAGE_NUM = 0;
 
 struct page_data_t final
@@ -102,9 +131,9 @@ class File final
     File() = default;
     File(const File&) = delete;
     File& operator=(const File&) = delete;
-    
+
     File(File&& other);
-    File& operator=(File&& other);  
+    File& operator=(File&& other);
 
     [[nodiscard]] bool is_open() const;
 
@@ -133,18 +162,19 @@ class TableManager final
 
  public:
     static TableManager& get();
-    static File& get(int table_id);
+    static File& get(TableID table_id);
 
-    [[nodiscard]] std::optional<int> open_table(const std::string& filename);
-    [[nodiscard]] bool close_table(int table_id);
-    [[nodiscard]] bool is_open(int table_id) const;
+    [[nodiscard]] std::optional<TableID> open_table(
+        const std::string& filename);
+    [[nodiscard]] bool close_table(TableID table_id);
+    [[nodiscard]] bool is_open(TableID table_id) const;
 
  private:
     TableManager() = default;
 
  private:
-    std::set<int> table_indicies_;
-    std::unordered_map<int, File> tables_;
+    std::unordered_map<std::string, TableID> table_id_tbl_;
+    std::unordered_map<TableID, File> tables_;
 };
 
 #endif  // FILE_H_

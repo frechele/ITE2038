@@ -40,7 +40,7 @@ pagenum_t Page::pagenum() const
     return block_.pagenum();
 }
 
-int Page::table_id() const 
+TableID Page::table_id() const 
 {
     return block_.table_id();
 }

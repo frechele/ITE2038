@@ -19,18 +19,18 @@ class BPTree
     static BPTree& get();
 
     [[nodiscard]] int open_table(const std::string& filename);
-    [[nodiscard]] bool close_table(int table_id);
-    [[nodiscard]] bool is_open(int table_id) const;
+    [[nodiscard]] bool close_table(TableID table_id);
+    [[nodiscard]] bool is_open(TableID table_id) const;
 
-    [[nodiscard]] bool insert(int table_id, const page_data_t& record);
-    [[nodiscard]] bool remove(int table_id, int64_t key);
-    [[nodiscard]] std::optional<page_data_t> find(int table_id,
+    [[nodiscard]] bool insert(TableID table_id, const page_data_t& record);
+    [[nodiscard]] bool remove(TableID table_id, int64_t key);
+    [[nodiscard]] std::optional<page_data_t> find(TableID table_id,
                                                   int64_t key) const;
-    [[nodiscard]] std::vector<page_data_t> find_range(int table_id,
+    [[nodiscard]] std::vector<page_data_t> find_range(TableID table_id,
                                                       int64_t key_start,
                                                       int64_t key_end) const;
 
-    [[nodiscard]] std::string to_string(int table_id) const;
+    [[nodiscard]] std::string to_string(TableID table_id) const;
 
  private:
     [[nodiscard]] std::optional<Page> make_node(Page& header,

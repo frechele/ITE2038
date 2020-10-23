@@ -31,7 +31,7 @@ void BufferBlock::clear()
 {
 	memset(&frame_, 0, PAGE_SIZE);
 
-	table_id_ = -1;
+	table_id_ = TableID();
 	pagenum_ = NULL_PAGE_NUM;
 
 	is_dirty_ = false;
@@ -70,7 +70,7 @@ bool BufferManager::shutdown()
 	{
 		if (current.is_dirty_)
 		{
-			const int table_id = current.table_id_;
+			const TableID table_id = current.table_id_;
 			const pagenum_t pagenum = current.pagenum_;
 
 			CHECK_FAILURE(TableManager::get(table_id).file_write_page(pagenum, &current.frame_));
@@ -98,7 +98,7 @@ bool BufferManager::close_table(int table_id)
 	return true;
 }
 
-std::optional<Page> BufferManager::get_page(int table_id, pagenum_t pagenum)
+std::optional<Page> BufferManager::get_page(TableID table_id, pagenum_t pagenum)
 {
 	auto it = block_tbl_.find({ table_id, pagenum });
 	if (it != end(block_tbl_))
@@ -131,7 +131,7 @@ bool BufferManager::eviction()
 
 bool BufferManager::eviction(BufferBlock& frame)
 {
-	const int table_id = frame.table_id();
+	const TableID table_id = frame.table_id();
 	const pagenum_t pagenum = frame.pagenum();
 
 	if (frame.is_dirty_)

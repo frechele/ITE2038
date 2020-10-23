@@ -18,7 +18,7 @@ class BufferBlock final
 
     [[nodiscard]] page_t& frame();
 
-    [[nodiscard]] constexpr int table_id() noexcept
+    [[nodiscard]] constexpr TableID table_id() noexcept
     {
         return table_id_;
     }
@@ -34,7 +34,7 @@ class BufferBlock final
 
  private:
     page_t frame_;
-    int table_id_{ -1 };
+    TableID table_id_;
     pagenum_t pagenum_{ NULL_PAGE_NUM };
 
     bool is_dirty_{ false };
@@ -53,8 +53,8 @@ class BufferManager final
 
     [[nodiscard]] bool close_table(int table_id);
 
-    [[nodiscard]] std::optional<Page> get_page(int table_id,
-                                               pagenum_t pagenum = 0);
+    [[nodiscard]] std::optional<Page> get_page(TableID table_id,
+                                               pagenum_t pagenum = NULL_PAGE_NUM);
 
  private:
     BufferManager() = default;
