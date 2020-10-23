@@ -183,31 +183,3 @@ bool TableManager::is_open(int table_id) const
 {
     return tables_.find(table_id) != end(tables_);
 }
-
-pagenum_t file_alloc_page(int table_id)
-{
-    pagenum_t alloced_page_num = NULL_PAGE_NUM;
-
-    if (!TableManager::get(table_id).file_alloc_page(alloced_page_num))
-        exit(EXIT_FAILURE);
-
-    return alloced_page_num;
-}
-
-void file_free_page(int table_id, pagenum_t pagenum)
-{
-    if (!TableManager::get(table_id).file_free_page(pagenum))
-        exit(EXIT_FAILURE);
-}
-
-void file_read_page(int table_id, pagenum_t pagenum, page_t* dest)
-{
-    if (!TableManager::get(table_id).file_read_page(pagenum, dest))
-        exit(EXIT_FAILURE);
-}
-
-void file_write_page(int table_id, pagenum_t pagenum, const page_t* src)
-{
-    if (!TableManager::get(table_id).file_write_page(pagenum, src))
-        exit(EXIT_FAILURE);
-}
