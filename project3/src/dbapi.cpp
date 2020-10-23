@@ -1,6 +1,7 @@
 #include "dbapi.h"
 
 #include "bpt.h"
+#include "buffer.h"
 #include "common.h"
 
 #include <cstring>
@@ -9,12 +10,16 @@
 
 int init_db(int num_buf)
 {
-    return FAIL;
+    CHECK_FAILURE(BufferManager::get().initialize(num_buf));
+
+    return SUCCESS;
 }
 
-int shtudown_db()
+int shutdown_db()
 {
-    return FAIL;
+    CHECK_FAILURE(BufferManager::get().shutdown());
+
+    return SUCCESS;
 }
 
 int open_table(char* pathname)

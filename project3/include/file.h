@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <tuple>
 
 // SIZE CONSTANTS
 constexpr size_t PAGE_DATA_VALUE_SIZE = 120;
@@ -30,6 +31,7 @@ constexpr size_t HEADER_PAGE_RESERVED = PAGE_SIZE - HEADER_PAGE_USED;
 
 // TYPES
 using pagenum_t = uint64_t;
+using table_page_t = std::tuple<int, pagenum_t>;
 constexpr pagenum_t NULL_PAGE_NUM = 0;
 
 struct page_data_t final
@@ -144,19 +146,5 @@ class TableManager final
     std::set<int> table_indicies_;
     std::unordered_map<int, File> tables_;
 };
-
-extern "C" {
-// Allocate an on-disk page from the free page list
-pagenum_t file_alloc_page(int table_id);
-
-// Free an on-disk page to the free page list
-void file_free_page(int table_id, pagenum_t pagenum);
-
-// Read an on-disk page into the in-memory page structure(dest)
-void file_read_page(int table_id, pagenum_t pagenum, page_t* dest);
-
-// Write an in-memory page(src) to the on-disk page
-void file_write_page(int table_id, pagenum_t pagenum, const page_t* src);
-}
 
 #endif  // FILE_H_

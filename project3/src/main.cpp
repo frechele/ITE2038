@@ -16,6 +16,7 @@ int main()
     std::istream& in_stream = cin;
     // std::istream&& in_stream = std::ifstream("input.txt");
 
+    init_db(100);
     while (!in_stream.eof() && is_running)
     {
         std::string cmd;
@@ -104,4 +105,6 @@ int main()
             }
         }
     }
+
+    shutdown_db();
 }

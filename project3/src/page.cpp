@@ -5,43 +5,44 @@
 #include <memory.h>
 #include <utility>
 
-Page::Page(int table_id) noexcept : table_id_(table_id)
+Page::Page(BufferBlock& block)
+    : block_(block)
 {
-}
-
-Page::Page(int table_id, pagenum_t pagenum) noexcept
-    : table_id_(table_id), pagenum_(pagenum)
-{
-}
-
-bool Page::load()
-{
-    return TableManager::get(table_id_).file_read_page(pagenum_, &impl_);
-}
-
-bool Page::commit()
-{
-    return TableManager::get(table_id_).file_write_page(pagenum_, &impl_);
-}
-
-bool Page::free()
-{
-    return TableManager::get(table_id_).file_free_page(pagenum_);
 }
 
 void Page::clear()
 {
-    memset(&impl_, 0, PAGE_SIZE);
+    memset(&block_.frame(), 0, PAGE_SIZE);
 }
 
-pagenum_t Page::pagenum() const noexcept
+void Page::mark_dirty()
 {
-    return pagenum_;
+	block_.mark_dirty();
 }
 
-int Page::table_id() const noexcept
+void Page::lock()
 {
-    return table_id_;
+    block_.lock();
+}
+
+void Page::unlock()
+{
+    block_.unlock();
+}
+
+bool Page::free()
+{
+    return TableManager::get(table_id()).file_free_page(pagenum());
+}
+
+pagenum_t Page::pagenum() const 
+{
+    return block_.pagenum();
+}
+
+int Page::table_id() const 
+{
+    return block_.table_id();
 }
 
 page_header_t& Page::header()
@@ -51,7 +52,7 @@ page_header_t& Page::header()
 
 const page_header_t& Page::header() const
 {
-    return impl_.node.header;
+    return block_.frame().node.header;
 }
 
 header_page_t& Page::header_page()
@@ -61,7 +62,7 @@ header_page_t& Page::header_page()
 
 const header_page_t& Page::header_page() const
 {
-    return impl_.file;
+    return block_.frame().file;
 }
 
 free_page_header_t& Page::free_header()
@@ -71,7 +72,7 @@ free_page_header_t& Page::free_header()
 
 const free_page_header_t& Page::free_header() const
 {
-    return impl_.node.free_header;
+    return block_.frame().node.free_header;
 }
 
 page_branch_t* Page::branches()
@@ -81,7 +82,7 @@ page_branch_t* Page::branches()
 
 const page_branch_t* Page::branches() const
 {
-    return impl_.node.branch;
+    return block_.frame().node.branch;
 }
 
 page_data_t* Page::data()
@@ -91,5 +92,15 @@ page_data_t* Page::data()
 
 const page_data_t* Page::data() const
 {
-    return impl_.node.data;
+    return block_.frame().node.data;
+}
+
+ScopedPageLock::ScopedPageLock(Page& page) : page_(page)
+{
+    page.lock();
+}
+
+ScopedPageLock::~ScopedPageLock()
+{
+    page_.unlock();
 }

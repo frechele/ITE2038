@@ -1,22 +1,24 @@
 #ifndef PAGE_H_
 #define PAGE_H_
 
+#include "buffer.h"
 #include "file.h"
 
 class Page final
 {
  public:
-    explicit Page(int table_id) noexcept;
-    Page(int table_id, pagenum_t pagenum) noexcept;
-
-    [[nodiscard]] bool load();
-    [[nodiscard]] bool commit();
-    [[nodiscard]] bool free();
+    Page(BufferBlock& block);
 
     void clear();
+	void mark_dirty();
 
-    [[nodiscard]] pagenum_t pagenum() const noexcept;
-    [[nodiscard]] int table_id() const noexcept;
+    void lock();
+    void unlock();
+
+    [[nodiscard]] bool free();
+
+    [[nodiscard]] pagenum_t pagenum() const;
+    [[nodiscard]] int table_id() const;
 
     [[nodiscard]] header_page_t& header_page();
     [[nodiscard]] const header_page_t& header_page() const;
@@ -31,9 +33,17 @@ class Page final
     [[nodiscard]] const page_data_t* data() const;
 
  private:
-    int table_id_{ -1 };
-    pagenum_t pagenum_{ NULL_PAGE_NUM };
-    page_t impl_;
+	BufferBlock& block_;
+};
+
+class ScopedPageLock final
+{
+public:
+    ScopedPageLock(Page& page);
+    ~ScopedPageLock();
+
+private:
+    Page& page_;
 };
 
 #endif  // PAGE_H_

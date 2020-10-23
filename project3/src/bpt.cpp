@@ -90,81 +90,93 @@ bool BPTree::is_open(int table_id) const
 
 bool BPTree::insert(int table_id, const page_data_t& record)
 {
-    Page header(table_id);
-    CHECK_FAILURE(header.load());
+    auto header = BufferManager::get().get_page(table_id);
+    CHECK_FAILURE(header.has_value());
+
+    ScopedPageLock header_lock(header.value());
 
     // case 1 : duplicated key
-    if (find(header, record.key))
+    if (find(header.value(), record.key))
         return false;
 
     // case 2 : tree does not exist
-    if (header.header_page().root_page_number == NULL_PAGE_NUM)
+    if (header.value().header_page().root_page_number == NULL_PAGE_NUM)
     {
-        auto new_page = make_node(header, true);
+        auto new_page = make_node(header.value(), true);
         CHECK_FAILURE(new_page.has_value());
+
+        ScopedPageLock new_page_lock(new_page.value());
 
         new_page.value().header().parent_page_number = NULL_PAGE_NUM;
         new_page.value().header().num_keys = 1;
 
         new_page.value().data()[0] = record;
 
-        CHECK_FAILURE(new_page.value().commit());
+        header.value().header_page().root_page_number = new_page.value().pagenum();
 
-        header.header_page().root_page_number = new_page.value().pagenum();
+        new_page.value().mark_dirty();
+        header.value().mark_dirty();
 
-        return header.commit();
+        return true;
     }
 
-    auto leaf = find_leaf(header, record.key);
-    CHECK_FAILURE(leaf.value().load());
+    auto leaf = find_leaf(header.value(), record.key);
+    ScopedPageLock leaf_Lock(leaf.value());
 
     // case 3-1 : leaf has room for key
     if (leaf.value().header().num_keys < LEAF_ORDER - 1)
     {
-        return insert_into_leaf(header, leaf.value(), record);
+        return insert_into_leaf(header.value(), leaf.value(), record);
     }
 
     // case 3-2 : leaf must be split
 
-    return insert_into_leaf_after_splitting(header, leaf.value(), record);
+    return insert_into_leaf_after_splitting(header.value(), leaf.value(), record);
 }
 
 bool BPTree::remove(int table_id, int64_t key)
 {
-    Page header(table_id);
-    CHECK_FAILURE(header.load());
+    auto header = BufferManager::get().get_page(table_id);
+    CHECK_FAILURE(header.has_value());
 
-    auto record = find(header, key);
+    ScopedPageLock header_lock(header.value());
+
+    auto record = find(header.value(), key);
     CHECK_FAILURE(record);
 
-    auto leaf = find_leaf(header, key);
+    auto leaf = find_leaf(header.value(), key);
     CHECK_FAILURE(leaf.has_value());
 
-    return delete_entry(header, std::move(leaf.value()), key);
+    ScopedPageLock leaf_lock(leaf.value());
+
+    return delete_entry(header.value(), std::move(leaf.value()), key);
 }
 
 std::optional<page_data_t> BPTree::find(int table_id, int64_t key) const
 {
-    Page header(table_id);
-    CHECK_FAILURE2(header.load(), std::nullopt);
+    auto header = BufferManager::get().get_page(table_id);
+    CHECK_FAILURE2(header.has_value(), std::nullopt);
 
-    return find(header, key);
+    ScopedPageLock header_lock(header.value());
+
+    return find(header.value(), key);
 }
 
 std::vector<page_data_t> BPTree::find_range(int table_id, int64_t key_start,
                                             int64_t key_end) const
 {
-    Page header(table_id);
-    CHECK_FAILURE2(header.load(), {});
+    auto header = BufferManager::get().get_page(table_id);
+    CHECK_FAILURE2(header.has_value(), {});
 
-    auto page_opt = find_leaf(header, key_start);
-    CHECK_FAILURE2(page_opt.has_value(), {});
+    ScopedPageLock header_lock(header.value());
 
-    auto page = std::move(page_opt.value());
-    CHECK_FAILURE2(page.load(), {});
+    auto page = find_leaf(header.value(), key_start);
+    CHECK_FAILURE2(page.has_value(), {});
 
-    const int num_keys = page.header().num_keys;
-    const auto data = page.data();
+    page.value().lock();
+
+    const int num_keys = page.value().header().num_keys;
+    const auto data = page.value().data();
 
     int i = 0;
     for (; i < num_keys && data[i].key < key_start; ++i)
@@ -174,18 +186,22 @@ std::vector<page_data_t> BPTree::find_range(int table_id, int64_t key_start,
         return {};
 
     std::vector<page_data_t> result;
-    while (page.pagenum() != NULL_PAGE_NUM)
+    while (page.value().pagenum() != NULL_PAGE_NUM)
     {
-        const int num_keys = page.header().num_keys;
-        const auto data = page.data();
+        const int num_keys = page.value().header().num_keys;
+        const auto data = page.value().data();
 
         for (; i < num_keys && data[i].key <= key_end; ++i)
             result.push_back(data[i]);
 
-        page = Page(table_id, page.header().page_a_number);
-        CHECK_FAILURE2(page.load(), {});
+        page.value().unlock();
+        page.emplace(BufferManager::get().get_page(table_id, page.value().header().page_a_number).value());
+        page.value().unlock();
+        CHECK_FAILURE2(page.has_value(), {});
         i = 0;
     }
+
+    page.value().unlock();
 
     return result;
 }
@@ -194,31 +210,36 @@ std::string BPTree::to_string(int table_id) const
 {
     std::stringstream ss;
 
-    Page header(table_id);
-    CHECK_FAILURE2(header.load(), "");
+    auto header = BufferManager::get().get_page(table_id);
+    CHECK_FAILURE2(header.has_value(), "");
 
-    if (header.header_page().root_page_number != NULL_PAGE_NUM)
+    ScopedPageLock header_lock(header.value());
+
+    if (header.value().header_page().root_page_number != NULL_PAGE_NUM)
     {
         int rank = 0;
         std::queue<pagenum_t> queue;
-        queue.emplace(header.header_page().root_page_number);
+        queue.emplace(header.value().header_page().root_page_number);
 
         while (!queue.empty())
         {
             const pagenum_t pagenum = queue.front();
             queue.pop();
 
-            Page page(table_id, pagenum);
-            CHECK_FAILURE2(page.load(), "");
+            auto page = BufferManager::get().get_page(table_id, pagenum);
+            CHECK_FAILURE2(page.has_value(), "");
 
-            if (page.header().page_a_number != NULL_PAGE_NUM)
+            ScopedPageLock page_lock(page.value());
+
+            if (page.value().header().page_a_number != NULL_PAGE_NUM)
             {
-                Page parent(table_id, page.header().parent_page_number);
-                CHECK_FAILURE2(parent.load(), "");
+                auto parent = BufferManager::get().get_page(table_id, page.value().header().parent_page_number);
+                CHECK_FAILURE2(parent.has_value(), "");
+                ScopedPageLock parent_lock(parent.value());
 
-                if (parent.header().page_a_number == pagenum)  // leftmost
+                if (parent.value().header().page_a_number == pagenum)  // leftmost
                 {
-                    const int new_rank = path_to_root(header, pagenum);
+                    const int new_rank = path_to_root(header.value(), pagenum);
                     if (new_rank != rank)
                     {
                         rank = new_rank;
@@ -227,11 +248,11 @@ std::string BPTree::to_string(int table_id) const
                 }
             }
 
-            const int num_keys = page.header().num_keys;
-            const int is_leaf = page.header().is_leaf;
-            const pagenum_t page_a_number = page.header().page_a_number;
-            const auto data = page.data();
-            const auto branches = page.branches();
+            const int num_keys = page.value().header().num_keys;
+            const int is_leaf = page.value().header().is_leaf;
+            const pagenum_t page_a_number = page.value().header().page_a_number;
+            const auto data = page.value().data();
+            const auto branches = page.value().branches();
 
             for (int i = 0; i < num_keys; ++i)
                 ss << (is_leaf ? data[i].key : branches[i].key) << ' ';
@@ -253,14 +274,17 @@ std::string BPTree::to_string(int table_id) const
 std::optional<Page> BPTree::make_node(Page& header, bool is_leaf) const
 {
     const int table_id = header.table_id();
-    Page page(table_id, file_alloc_page(table_id));
 
-    CHECK_FAILURE2(page.load(), std::nullopt);
+    pagenum_t pagenum;
+    CHECK_FAILURE2(TableManager::get(table_id).file_alloc_page(pagenum), std::nullopt);
 
-    page.clear();
-    page.header().is_leaf = is_leaf;
+    auto page = BufferManager::get().get_page(table_id, pagenum);
+    CHECK_FAILURE2(page.has_value(), std::nullopt);
 
-    CHECK_FAILURE2(page.commit(), std::nullopt);
+    page.value().clear();
+    page.value().header().is_leaf = is_leaf;
+
+    page.value().mark_dirty();
 
     return page;
 }
@@ -284,24 +308,24 @@ std::optional<Page> BPTree::find_leaf(Page& header, int64_t key) const
         return std::nullopt;
 
     const int table_id = header.table_id();
-    Page current(table_id, header.header_page().root_page_number);
-    CHECK_FAILURE2(current.load(), std::nullopt);
+    auto current = BufferManager::get().get_page(table_id, header.header_page().root_page_number);
+    CHECK_FAILURE2(current.has_value(), std::nullopt);
 
-    while (!current.header().is_leaf)
+    while (!current.value().header().is_leaf)
     {
-        const auto branches = current.branches();
+        const auto branches = current.value().branches();
 
         int child_idx = std::distance(
             branches,
             std::upper_bound(
-                branches, branches + current.header().num_keys, key,
+                branches, branches + current.value().header().num_keys, key,
                 [](auto lhs, const auto& rhs) { return lhs < rhs.key; }));
 
         --child_idx;
-        current = Page(table_id, (child_idx == -1)
-                                     ? current.header().page_a_number
-                                     : branches[child_idx].child_page_number);
-        CHECK_FAILURE2(current.load(), std::nullopt);
+        current.emplace(BufferManager::get().get_page(table_id, (child_idx == -1)
+                                     ? current.value().header().page_a_number
+                                     : branches[child_idx].child_page_number).value());
+        CHECK_FAILURE2(current.has_value(), std::nullopt);
     }
 
     return current;
@@ -311,13 +335,14 @@ int BPTree::path_to_root(Page& header, pagenum_t child_num) const
 {
     int length = 0;
 
+    const int table_id = header.table_id();
     const pagenum_t root_page = header.pagenum();
     while (child_num != root_page)
     {
-        Page child(child_num);
-        CHECK_FAILURE2(child.load(), -1);
+        auto child = BufferManager::get().get_page(table_id, child_num);
+        CHECK_FAILURE2(child.has_value(), -1);
 
-        child_num = child.header().parent_page_number;
+        child_num = child.value().header().parent_page_number;
         ++length;
     }
 
@@ -341,7 +366,9 @@ bool BPTree::insert_into_leaf(Page& header, Page& leaf,
     data[insertion_point] = record;
     ++leaf.header().num_keys;
 
-    return leaf.commit();
+    leaf.mark_dirty();
+
+    return true;
 }
 
 bool BPTree::insert_into_parent(Page& header, Page& left, Page& right,
@@ -354,19 +381,19 @@ bool BPTree::insert_into_parent(Page& header, Page& left, Page& right,
     }
 
     // case 2 : leaf or node
-    Page parent(header.table_id(), left.header().parent_page_number);
-    CHECK_FAILURE(parent.load());
+    auto parent = BufferManager::get().get_page(header.table_id(), left.header().parent_page_number);
+    CHECK_FAILURE(parent.has_value());
 
-    const int left_index = get_left_index(parent, left.pagenum());
+    const int left_index = get_left_index(parent.value(), left.pagenum());
 
     // case 2-1 : the new key fits into the node
-    if (parent.header().num_keys < INTERNAL_ORDER - 1)
+    if (parent.value().header().num_keys < INTERNAL_ORDER - 1)
     {
-        return insert_into_node(header, parent, left_index, right, key);
+        return insert_into_node(header, parent.value(), left_index, right, key);
     }
 
     // case 2-2 : split a node in order to preserve the B+ tree properties
-    return insert_into_node_after_splitting(header, parent, left_index, right,
+    return insert_into_node_after_splitting(header, parent.value(), left_index, right,
                                             key);
 }
 
@@ -384,13 +411,15 @@ bool BPTree::insert_into_new_root(Page& header, Page& left, Page& right,
     left.header().parent_page_number = new_root.value().pagenum();
     right.header().parent_page_number = new_root.value().pagenum();
 
-    CHECK_FAILURE(new_root.value().commit());
-    CHECK_FAILURE(left.commit());
-    CHECK_FAILURE(right.commit());
+    new_root.value().mark_dirty();
+    left.mark_dirty();
+    right.mark_dirty();
 
     header.header_page().root_page_number = new_root.value().pagenum();
 
-    return header.commit();
+    header.mark_dirty();
+
+    return true;
 }
 
 bool BPTree::insert_into_node(Page& header, Page& parent, int left_index,
@@ -407,7 +436,9 @@ bool BPTree::insert_into_node(Page& header, Page& parent, int left_index,
     branches[left_index].key = key;
     ++parent.header().num_keys;
 
-    return parent.commit();
+    parent.mark_dirty();
+
+    return true;
 }
 
 bool BPTree::insert_into_leaf_after_splitting(Page& header, Page& leaf,
@@ -455,14 +486,17 @@ bool BPTree::insert_into_leaf_after_splitting(Page& header, Page& leaf,
 
     new_leaf.value().header().parent_page_number = leaf.header().parent_page_number;
 
-    CHECK_FAILURE(new_leaf.value().commit());
-    CHECK_FAILURE(leaf.commit());
+    new_leaf.value().mark_dirty();
+    leaf.mark_dirty();
+
     return insert_into_parent(header, leaf, new_leaf.value(), new_data[0].key);
 }
 
 bool BPTree::insert_into_node_after_splitting(Page& header, Page& old, int left_index,
                                               Page& right, int64_t key)
 {
+    const int table_id = header.table_id();
+
     std::array<page_branch_t, INTERNAL_ORDER> temp_data;
 
     const int num_keys = old.header().num_keys;
@@ -505,23 +539,24 @@ bool BPTree::insert_into_node_after_splitting(Page& header, Page& old, int left_
         const pagenum_t j = (i == -1) ? new_page.value().header().page_a_number
                                       : new_branches[i].child_page_number;
 
-        Page child(j);
+        auto child = BufferManager::get().get_page(table_id, j);
 
-        CHECK_FAILURE(child.load());
+        CHECK_FAILURE(child.has_value());
 
-        child.header().parent_page_number = new_page.value().pagenum();
+        child.value().header().parent_page_number = new_page.value().pagenum();
 
-        CHECK_FAILURE(child.commit());
+        child.value().mark_dirty();
     }
 
-    CHECK_FAILURE(old.commit());
-    CHECK_FAILURE(new_page.value().commit());
+    old.mark_dirty();
+    new_page.value().mark_dirty();
 
     return insert_into_parent(header, old, new_page.value(), k_prime);
 }
 
 bool BPTree::delete_entry(Page& header, Page node, int64_t key)
 {
+    const int table_id = header.table_id();
     const int is_leaf = node.header().is_leaf;
 
     if (is_leaf)
@@ -529,7 +564,7 @@ bool BPTree::delete_entry(Page& header, Page node, int64_t key)
     else
         remove_branch_from_internal(header, node, key);
 
-    CHECK_FAILURE(node.commit());
+    node.mark_dirty();
 
     if (header.header_page().root_page_number == node.pagenum())
         return adjust_root(header, node);
@@ -537,32 +572,35 @@ bool BPTree::delete_entry(Page& header, Page node, int64_t key)
     if (node.header().num_keys > MERGE_THRESHOLD)
         return true;
 
-    Page parent(node.header().parent_page_number);
-    CHECK_FAILURE(parent.load());
+    auto parent = BufferManager::get().get_page(table_id, node.header().parent_page_number);
+    CHECK_FAILURE(parent.has_value());
 
-    const int neighbor_index = get_neighbor_index(parent, node);
+    const int neighbor_index = get_neighbor_index(parent.value(), node);
     const int k_prime_index = (neighbor_index == -1) ? 0 : neighbor_index;
-    const int64_t k_prime = parent.branches()[k_prime_index].key;
+    const int64_t k_prime = parent.value().branches()[k_prime_index].key;
 
     const int left_pagenum =
         (neighbor_index == -1)
-            ? parent.branches()[0].child_page_number
+            ? parent.value().branches()[0].child_page_number
             : ((neighbor_index == 0)
-                   ? parent.header().page_a_number
-                   : parent.branches()[neighbor_index - 1].child_page_number);
-    Page left(left_pagenum);
-    CHECK_FAILURE(left.load());
+                   ? parent.value().header().page_a_number
+                   : parent.value().branches()[neighbor_index - 1].child_page_number);
+    auto left = BufferManager::get().get_page(table_id, left_pagenum);
+    CHECK_FAILURE(left.has_value());
+
+    Page* left_ptr = &left.value();
+    Page* right_ptr = &node;
 
     if (neighbor_index == -1)
     {
-        std::swap(left, node);
+        std::swap(left_ptr, right_ptr);
     }
 
     const int capacity = is_leaf ? LEAF_ORDER : INTERNAL_ORDER - 1;
-    if (left.header().num_keys + node.header().num_keys < capacity)
-        return coalesce_nodes(header, parent, left, node, k_prime);
+    if (left.value().header().num_keys + node.header().num_keys < capacity)
+        return coalesce_nodes(header, parent.value(), *left_ptr, *right_ptr, k_prime);
 
-    return redistribute_nodes(header, parent, left, node, k_prime_index, k_prime);
+    return redistribute_nodes(header, parent.value(), *left_ptr, *right_ptr, k_prime_index, k_prime);
 }
 
 void BPTree::remove_branch_from_internal(Page& header, Page& node, int64_t key)
@@ -602,15 +640,15 @@ bool BPTree::adjust_root(Page& header, Page& root)
     {
         header.header_page().root_page_number = root.header().page_a_number;
 
-        Page new_root(header.table_id(), header.header_page().root_page_number);
-        CHECK_FAILURE(new_root.load());
+        auto new_root = BufferManager::get().get_page(header.table_id(), header.header_page().root_page_number);
+        CHECK_FAILURE(new_root.has_value());
 
-        new_root.header().parent_page_number = 0;
+        new_root.value().header().parent_page_number = 0;
 
-        CHECK_FAILURE(new_root.commit());
+        new_root.value().mark_dirty();
     }
 
-    CHECK_FAILURE(header.commit());
+    header.mark_dirty();
 
     return root.free();
 }
@@ -618,6 +656,7 @@ bool BPTree::adjust_root(Page& header, Page& root)
 bool BPTree::coalesce_nodes(Page& header, Page& parent, Page& left, Page& right,
                             int64_t k_prime)
 {
+    const int table_id = header.table_id();
     const int insertion_index = left.header().num_keys;
 
     if (right.header().is_leaf)
@@ -656,19 +695,19 @@ bool BPTree::coalesce_nodes(Page& header, Page& parent, Page& left, Page& right,
                 left_branches[i] = right_branches[j];
             }
 
-            Page tmp(left_branches[i].child_page_number);
-            CHECK_FAILURE(tmp.load());
+            auto tmp = BufferManager::get().get_page(table_id, left_branches[i].child_page_number);
+            CHECK_FAILURE(tmp.has_value());
 
-            tmp.header().parent_page_number = left_number;
+            tmp.value().header().parent_page_number = left_number;
 
-            CHECK_FAILURE(tmp.commit());
+            tmp.value().mark_dirty();
 
             ++left.header().num_keys;
             --right.header().num_keys;
         }
     }
 
-    CHECK_FAILURE(left.commit());
+    left.mark_dirty();
     CHECK_FAILURE(delete_entry(header, parent, k_prime));
     return right.free();
 }
@@ -676,6 +715,8 @@ bool BPTree::coalesce_nodes(Page& header, Page& parent, Page& left, Page& right,
 bool BPTree::redistribute_nodes(Page& header, Page& parent, Page& left, Page& right,
                                 int k_prime_index, int64_t k_prime)
 {
+    const int table_id = header.table_id();
+
     const int left_num_key = left.header().num_keys;
     const int right_num_key = right.header().num_keys;
 
@@ -702,12 +743,12 @@ bool BPTree::redistribute_nodes(Page& header, Page& parent, Page& left, Page& ri
                 left_branches[left_num_key].child_page_number =
                     right.header().page_a_number;
 
-            Page tmp(moved_child_pagenum);
-            CHECK_FAILURE(tmp.load());
+            auto tmp = BufferManager::get().get_page(table_id, moved_child_pagenum);
+            CHECK_FAILURE(tmp.has_value());
 
-            tmp.header().parent_page_number = left.pagenum();
+            tmp.value().header().parent_page_number = left.pagenum();
 
-            CHECK_FAILURE(tmp.commit());
+            tmp.value().mark_dirty();
 
             parent.branches()[k_prime_index].key = right_branches[0].key;
 
@@ -745,12 +786,12 @@ bool BPTree::redistribute_nodes(Page& header, Page& parent, Page& left, Page& ri
                 right_branches[0].child_page_number =
                     right.header().page_a_number;
 
-            Page tmp(moved_child_pagenum);
-            CHECK_FAILURE(tmp.load());
+            auto tmp = BufferManager::get().get_page(table_id, moved_child_pagenum);
+            CHECK_FAILURE(tmp.has_value());
 
-            tmp.header().parent_page_number = right.pagenum();
+            tmp.value().header().parent_page_number = right.pagenum();
 
-            CHECK_FAILURE(tmp.commit());
+            tmp.value().mark_dirty();
 
             parent.branches()[k_prime_index].key =
                 left_branches[left_num_key - 1].key;
@@ -763,7 +804,9 @@ bool BPTree::redistribute_nodes(Page& header, Page& parent, Page& left, Page& ri
         ++right.header().num_keys;
     }
 
-    CHECK_FAILURE(left.commit());
-    CHECK_FAILURE(right.commit());
-    return parent.commit();
+    left.mark_dirty();
+    right.mark_dirty();
+    parent.mark_dirty();
+
+    return true;
 }
