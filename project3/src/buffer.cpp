@@ -1,6 +1,5 @@
 #include "buffer.h"
 
-#include "common.h"
 #include "page.h"
 
 #include <cassert>
@@ -19,8 +18,7 @@ void BufferBlock::unlock()
 
 page_t& BufferBlock::frame()
 {
-	//assert(pin_count_ > 0);
-
+	assert(pin_count_ > 0);
 	return *frame_;
 }
 
@@ -108,7 +106,8 @@ bool BufferManager::close_table(int table_id)
 
 		if (pr_table_id == table_id)
 		{
-			// TODO: waiting pin == 0 with std::condition_variable
+			while (pr.second->pin_count_ > 0);
+
 			CHECK_FAILURE(eviction(pr.second));
 		}
 	}
@@ -116,29 +115,35 @@ bool BufferManager::close_table(int table_id)
 	return true;
 }
 
-std::optional<Page> BufferManager::get_page(TableID table_id, pagenum_t pagenum)
+bool BufferManager::get_page(TableID table_id, pagenum_t pagenum, std::optional<Page>& page)
 {
+	BufferBlock* current = head_;
+
 	auto it = block_tbl_.find({ table_id, pagenum });
 	if (it != end(block_tbl_))
 	{
-		unlink_and_enqueue(it->second);
-		return { Page(*it->second) };
+		current = it->second;
 	}
+	else
+	{
+		if (current->table_id_ != -1)
+			current = eviction();
 
-	BufferBlock* current = head_;
-	if (current->table_id_ != -1)
-		current = eviction();
+		CHECK_FAILURE(current != nullptr);
 
-	CHECK_FAILURE2(current != nullptr, std::nullopt);
+		current->table_id_ = table_id;
+		current->pagenum_ = pagenum;
 
-	current->table_id_ = table_id;
-	current->pagenum_ = pagenum;
-
-	CHECK_FAILURE2(TableManager::get(table_id).file_read_page(pagenum, current->frame_), std::nullopt);
-	block_tbl_.insert_or_assign({ table_id, pagenum }, current);
+		CHECK_FAILURE(TableManager::get(table_id).file_read_page(pagenum, current->frame_));
+		block_tbl_.insert_or_assign({ table_id, pagenum }, current);
+	}
+	
+	current->lock();
 
 	unlink_and_enqueue(current);
-	return { Page(*current) };
+	page.emplace(*current);
+
+	return true;
 }
 
 void BufferManager::enqueue(BufferBlock* block)

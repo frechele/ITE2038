@@ -1,13 +1,13 @@
 #ifndef BUFFER_H_
 #define BUFFER_H_
 
+#include "common.h"
 #include "file.h"
+#include "page.h"
 
 #include <map>
 #include <memory>
 #include <optional>
-
-class Page;
 
 class BufferBlock final
 {
@@ -55,8 +55,8 @@ class BufferManager final
 
     [[nodiscard]] bool close_table(int table_id);
 
-    [[nodiscard]] std::optional<Page> get_page(
-        TableID table_id, pagenum_t pagenum = NULL_PAGE_NUM);
+    [[nodiscard]] bool get_page(TableID table_id, pagenum_t pagenum,
+                                std::optional<Page>& page);
 
  private:
     BufferManager() = default;
@@ -75,5 +75,16 @@ class BufferManager final
 
     std::map<table_page_t, BufferBlock*> block_tbl_;
 };
+
+template <typename Function>
+[[nodiscard]] bool buffer(Function&& func, TableID table_id,
+                          pagenum_t pagenum = NULL_PAGE_NUM)
+{
+    std::optional<Page> opt;
+    CHECK_FAILURE(
+        BufferManager::get().get_page(std::move(table_id), pagenum, opt));
+
+    return func(opt.value());
+}
 
 #endif  // BUFFER_H_

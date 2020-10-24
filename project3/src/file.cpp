@@ -76,51 +76,49 @@ bool File::file_alloc_page(pagenum_t& pagenum)
 {
     pagenum = NULL_PAGE_NUM;
 
-    auto header = BufferManager::get().get_page(table_id_, 0);
-    CHECK_FAILURE(header.has_value());
+    return buffer([&](Page& header) {
+        if (header.header_page().free_page_number != NULL_PAGE_NUM)
+        {
+            const pagenum_t free_page_number = header.header_page().free_page_number;
 
-    ScopedPageLock header_lock(header.value());
+            CHECK_FAILURE(buffer([&](Page& free_page) {
+                pagenum = header.header_page().free_page_number;
 
-    if (header.value().header_page().free_page_number != NULL_PAGE_NUM)
-    {
-        const pagenum_t free_page_number = header.value().header_page().free_page_number;
+                header.header_page().free_page_number = free_page.free_header().next_free_page_number;
 
-        auto free_page = BufferManager::get().get_page(table_id_, free_page_number);
-        CHECK_FAILURE(free_page.has_value());
+                return true;
+            }, table_id_, free_page_number));
+        }
+        else
+        {
+            pagenum = header.header_page().num_pages;
 
-        ScopedPageLock free_page_lock(free_page.value());
+            page_t new_page;
+            memset(&new_page, 0, PAGE_SIZE);
 
-        pagenum = header.value().header_page().free_page_number;
+            CHECK_FAILURE(file_write_page(pagenum, &new_page));
 
-        header.value().header_page().free_page_number = free_page.value().free_header().next_free_page_number;
-    }
-    else
-    {
-        pagenum = header.value().header_page().num_pages;
+            ++header.header_page().num_pages;
+        }
 
-        page_t new_page;
-        memset(&new_page, 0, PAGE_SIZE);
+        header.mark_dirty();
 
-        CHECK_FAILURE(file_write_page(pagenum, &new_page));
-
-        ++header.value().header_page().num_pages;
-    }
-
-    return true;
+        return true;
+    }, table_id_, 0);
 }
 
 bool File::file_free_page(pagenum_t pagenum)
 {
-    page_t header;
-    CHECK_FAILURE(file_read_page(0, &header));
+    return buffer([&](Page& header) {
+        page_t free_page;
+        free_page.node.free_header.next_free_page_number = header.header_page().free_page_number;
 
-    page_t free_page;
-    free_page.node.free_header.next_free_page_number = header.file.free_page_number;
+        header.header_page().free_page_number = pagenum;
 
-    header.file.free_page_number = pagenum;
-    
-    CHECK_FAILURE(file_write_page(0, &header));
-    return file_write_page(pagenum, &free_page);
+        header.mark_dirty();
+
+        return file_write_page(pagenum, &free_page);
+    }, table_id_);
 }
 
 bool File::file_read_page(pagenum_t pagenum, page_t* dest)

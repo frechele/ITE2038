@@ -1,19 +1,18 @@
 #ifndef PAGE_H_
 #define PAGE_H_
 
-#include "buffer.h"
 #include "file.h"
+
+class BufferBlock;
 
 class Page final
 {
  public:
     Page(BufferBlock& block);
+    ~Page() noexcept;
 
     void clear();
     void mark_dirty();
-
-    void lock();
-    void unlock();
 
     [[nodiscard]] bool free();
 
@@ -34,16 +33,6 @@ class Page final
 
  private:
     BufferBlock& block_;
-};
-
-class ScopedPageLock final
-{
- public:
-    ScopedPageLock(Page& page);
-    ~ScopedPageLock();
-
- private:
-    Page& page_;
 };
 
 #endif  // PAGE_H_

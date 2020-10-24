@@ -33,12 +33,11 @@ class BPTree
     [[nodiscard]] std::string to_string(TableID table_id) const;
 
  private:
-    [[nodiscard]] std::optional<Page> make_node(Page& header,
-                                                bool is_leaf) const;
+    [[nodiscard]] table_page_t make_node(Page& header, bool is_leaf) const;
 
     [[nodiscard]] std::optional<page_data_t> find(Page& header,
                                                   int64_t key) const;
-    [[nodiscard]] std::optional<Page> find_leaf(Page& header,
+    [[nodiscard]] table_page_t find_leaf(Page& header,
                                                 int64_t key) const;
     [[nodiscard]] int path_to_root(Page& header, pagenum_t child) const;
 
@@ -60,7 +59,7 @@ class BPTree
                                                         int64_t key);
 
     // delete operation helper methods
-    [[nodiscard]] bool delete_entry(Page& header, Page node, int64_t key);
+    [[nodiscard]] bool delete_entry(Page& header, Page& node, int64_t key);
     void remove_branch_from_internal(Page& header, Page& node, int64_t key);
     void remove_record_from_leaf(Page& header, Page& node, int64_t key);
     [[nodiscard]] bool adjust_root(Page& header, Page& root);
