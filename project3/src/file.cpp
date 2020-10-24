@@ -1,5 +1,6 @@
 #include "file.h"
 
+#include "buffer.h"
 #include "common.h"
 #include "page.h"
 
@@ -15,18 +16,24 @@ File::~File()
 File::File(File&& other)
 {
     file_handle_ = other.file_handle_;
+    table_id_ = std::move(other.table_id_);
+
     other.file_handle_ = -1;
+    other.table_id_ = TableID();
 }
 
 File& File::operator=(File&& other)
 {
     file_handle_ = other.file_handle_;
+    table_id_ = std::move(other.table_id_);
+
     other.file_handle_ = -1;
+    other.table_id_ = TableID();
 
     return *this;
 }
 
-bool File::open(const std::string& filename)
+bool File::open(const std::string& filename, TableID table_id)
 {
     if (is_open())
         close();
@@ -46,6 +53,8 @@ bool File::open(const std::string& filename)
 
         CHECK_FAILURE(file_write_page(0, &file_header));
     }
+
+    table_id_ = std::move(table_id);
 
     return true;
 }
@@ -67,32 +76,37 @@ bool File::file_alloc_page(pagenum_t& pagenum)
 {
     pagenum = NULL_PAGE_NUM;
 
-    page_t header;
-    CHECK_FAILURE(file_read_page(0, &header));
+    auto header = BufferManager::get().get_page(table_id_, 0);
+    CHECK_FAILURE(header.has_value());
 
-    if (header.file.free_page_number != NULL_PAGE_NUM)
+    ScopedPageLock header_lock(header.value());
+
+    if (header.value().header_page().free_page_number != NULL_PAGE_NUM)
     {
-        const pagenum_t free_page_number = header.file.free_page_number;
-        page_t free_page;
-        CHECK_FAILURE(file_read_page(free_page_number, &free_page));
+        const pagenum_t free_page_number = header.value().header_page().free_page_number;
 
-        pagenum = header.file.free_page_number;
+        auto free_page = BufferManager::get().get_page(table_id_, free_page_number);
+        CHECK_FAILURE(free_page.has_value());
 
-        header.file.free_page_number = free_page.node.free_header.next_free_page_number;
+        ScopedPageLock free_page_lock(free_page.value());
+
+        pagenum = header.value().header_page().free_page_number;
+
+        header.value().header_page().free_page_number = free_page.value().free_header().next_free_page_number;
     }
     else
     {
-        pagenum = header.file.num_pages;
+        pagenum = header.value().header_page().num_pages;
 
         page_t new_page;
         memset(&new_page, 0, PAGE_SIZE);
 
         CHECK_FAILURE(file_write_page(pagenum, &new_page));
 
-        ++header.file.num_pages;
+        ++header.value().header_page().num_pages;
     }
 
-    return file_write_page(0, &header);
+    return true;
 }
 
 bool File::file_free_page(pagenum_t pagenum)
@@ -154,10 +168,11 @@ std::optional<TableID> TableManager::open_table(const std::string& filename)
 
     CHECK_FAILURE2(table_id_tbl_.size() < MAX_TABLE_COUNT, std::nullopt);
 
-    File file;
-    CHECK_FAILURE2(file.open(filename), std::nullopt);
-
     const TableID table_id = TableID(table_id_tbl_.size() + 1);
+
+    File file;
+    CHECK_FAILURE2(file.open(filename, table_id), std::nullopt);
+
     table_id_tbl_.insert_or_assign(filename, table_id);
     tables_.insert_or_assign(table_id, std::move(file));
     return table_id;

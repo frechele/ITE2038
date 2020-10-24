@@ -143,13 +143,14 @@ class File final
     [[nodiscard]] bool file_write_page(pagenum_t pagenum, const page_t* src);
 
  private:
-    [[nodiscard]] bool open(const std::string& filename);
+    [[nodiscard]] bool open(const std::string& filename, TableID table_id);
     void close();
 
     [[nodiscard]] bool read(size_t size, size_t offset, void* value);
     [[nodiscard]] bool write(size_t size, size_t offset, const void* value);
 
  private:
+    TableID table_id_;
     int file_handle_{ -1 };
 
     friend class TableManager;

@@ -281,6 +281,8 @@ std::optional<Page> BPTree::make_node(Page& header, bool is_leaf) const
     auto page = BufferManager::get().get_page(table_id, pagenum);
     CHECK_FAILURE2(page.has_value(), std::nullopt);
 
+    ScopedPageLock page_lock(page.value());
+
     page.value().clear();
     page.value().header().is_leaf = is_leaf;
 
@@ -311,6 +313,8 @@ std::optional<Page> BPTree::find_leaf(Page& header, int64_t key) const
     auto current = BufferManager::get().get_page(table_id, header.header_page().root_page_number);
     CHECK_FAILURE2(current.has_value(), std::nullopt);
 
+    current.value().lock();
+
     while (!current.value().header().is_leaf)
     {
         const auto branches = current.value().branches();
@@ -322,11 +326,16 @@ std::optional<Page> BPTree::find_leaf(Page& header, int64_t key) const
                 [](auto lhs, const auto& rhs) { return lhs < rhs.key; }));
 
         --child_idx;
+
+        current.value().unlock();
         current.emplace(BufferManager::get().get_page(table_id, (child_idx == -1)
                                      ? current.value().header().page_a_number
                                      : branches[child_idx].child_page_number).value());
         CHECK_FAILURE2(current.has_value(), std::nullopt);
+        current.value().lock();
     }
+
+    current.value().unlock();
 
     return current;
 }

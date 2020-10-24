@@ -6,7 +6,6 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include <vector>
 
 class Page;
 
@@ -33,12 +32,15 @@ class BufferBlock final
     void clear();
 
  private:
-    page_t frame_;
+    page_t* frame_;
     TableID table_id_;
     pagenum_t pagenum_{ NULL_PAGE_NUM };
 
     bool is_dirty_{ false };
     int pin_count_{ 0 };
+
+    BufferBlock* prev_{ nullptr };
+    BufferBlock* next_{ nullptr };
 
     friend class BufferManager;
 };
@@ -53,18 +55,24 @@ class BufferManager final
 
     [[nodiscard]] bool close_table(int table_id);
 
-    [[nodiscard]] std::optional<Page> get_page(TableID table_id,
-                                               pagenum_t pagenum = NULL_PAGE_NUM);
+    [[nodiscard]] std::optional<Page> get_page(
+        TableID table_id, pagenum_t pagenum = NULL_PAGE_NUM);
 
  private:
     BufferManager() = default;
 
-    [[nodiscard]] bool eviction();
-    [[nodiscard]] bool eviction(BufferBlock& frame);
+    void enqueue(BufferBlock* block);
+    void unlink_and_enqueue(BufferBlock* block);
+
+    [[nodiscard]] BufferBlock* eviction();
+    [[nodiscard]] BufferBlock* eviction(BufferBlock* block);
 
  private:
-    size_t clk_{ 0 };
-    std::vector<BufferBlock> frames_;
+    BufferBlock* head_{ nullptr };
+    BufferBlock* tail_{ nullptr };
+
+    page_t* page_arr_{ nullptr };
+
     std::map<table_page_t, BufferBlock*> block_tbl_;
 };
 
