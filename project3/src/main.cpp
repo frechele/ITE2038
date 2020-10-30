@@ -24,7 +24,7 @@ int main()
     std::ios_base::sync_with_stdio(false);
     std::cin.tie(0);
 
-    if (FAILED(init_db(1000)))
+    if (FAILED(init_db(100)))
     {
 #ifndef PERF_TEST
         cout << "ERROR: cannot init db" << endl;
@@ -136,7 +136,7 @@ int main()
     std::random_device rd;
     std::mt19937 engine(rd());
 
-    const int tid = open_table("test.db");
+    const int tid = open_table("/mnt/ssd/dbms/test.db");
 
     {
         std::vector<int> keys(N);

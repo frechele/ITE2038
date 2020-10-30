@@ -79,6 +79,9 @@ bool BufferManager::shutdown()
     BufferBlock* current = head_;
     do
     {
+        while (current->pin_count_ > 0)
+            ;
+
         if (current->is_dirty_)
         {
             const table_id_t table_id = current->table_id_;
@@ -125,6 +128,7 @@ bool BufferManager::get_page(table_id_t table_id, pagenum_t pagenum,
     if (it != end(block_tbl_))
     {
         current = it->second;
+        current->lock();
     }
     else
     {
@@ -136,12 +140,12 @@ bool BufferManager::get_page(table_id_t table_id, pagenum_t pagenum,
         current->table_id_ = table_id;
         current->pagenum_ = pagenum;
 
+        current->lock();
+
         CHECK_FAILURE(TblMgr().get(table_id).file_read_page(
             pagenum, current->frame_));
         block_tbl_.insert_or_assign({ table_id, pagenum }, current);
     }
-
-    current->lock();
 
     unlink_and_enqueue(current);
     page.emplace(*current);
