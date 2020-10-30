@@ -19,7 +19,7 @@ SRCS_FOR_LIB:=$(SRCDIR)bpt.cpp $(SRCDIR)file.cpp $(SRCDIR)dbapi.cpp $(SRCDIR)pag
 OBJS_FOR_LIB:=$(SRCS_FOR_LIB:.cpp=.o)
 
 CFLAGS+= -g -fPIC -I $(INC)
-CXXFLAGS+= -std=c++1z -Wall  -g -fPIC -I $(INC) -pg
+CXXFLAGS+= -std=c++1z -Wall  -g -fPIC -I $(INC)
 
 TARGET=main
 
