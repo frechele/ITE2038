@@ -2,12 +2,13 @@
 #define BUFFER_H_
 
 #include "common.h"
+#include "dbms.h"
 #include "file.h"
 #include "page.h"
 
-#include <map>
 #include <memory>
 #include <optional>
+#include <unordered_map>
 
 class BufferBlock final
 {
@@ -17,7 +18,7 @@ class BufferBlock final
 
     [[nodiscard]] page_t& frame();
 
-    [[nodiscard]] constexpr TableID table_id() noexcept
+    [[nodiscard]] constexpr table_id_t table_id() noexcept
     {
         return table_id_;
     }
@@ -33,7 +34,7 @@ class BufferBlock final
 
  private:
     page_t* frame_;
-    TableID table_id_;
+    table_id_t table_id_{ -1 };
     pagenum_t pagenum_{ NULL_PAGE_NUM };
 
     bool is_dirty_{ false };
@@ -48,15 +49,16 @@ class BufferBlock final
 class BufferManager final
 {
  public:
-    static BufferManager& get();
-
     [[nodiscard]] bool initialize(int num_buf);
     [[nodiscard]] bool shutdown();
 
     [[nodiscard]] bool close_table(int table_id);
 
-    [[nodiscard]] bool get_page(TableID table_id, pagenum_t pagenum,
+    [[nodiscard]] bool get_page(table_id_t table_id, pagenum_t pagenum,
                                 std::optional<Page>& page);
+
+    bool check_all_unpinned() const;
+    void dump_frame_stat() const;
 
  private:
     BufferManager() = default;
@@ -73,16 +75,18 @@ class BufferManager final
 
     page_t* page_arr_{ nullptr };
 
-    std::map<table_page_t, BufferBlock*> block_tbl_;
+    std::unordered_map<table_page_t, BufferBlock*> block_tbl_;
+    
+    friend class DBMS;
 };
 
 template <typename Function>
-[[nodiscard]] bool buffer(Function&& func, TableID table_id,
+[[nodiscard]] bool buffer(Function&& func, table_id_t table_id,
                           pagenum_t pagenum = NULL_PAGE_NUM)
 {
     std::optional<Page> opt;
     CHECK_FAILURE(
-        BufferManager::get().get_page(std::move(table_id), pagenum, opt));
+        BufMgr().get_page(std::move(table_id), pagenum, opt));
 
     return func(opt.value());
 }

@@ -3,8 +3,7 @@
 
 #include <cstdint>
 
-extern "C"
-{
+extern "C" {
 int init_db(int num_buf);
 int shutdown_db();
 

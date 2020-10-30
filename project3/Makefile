@@ -15,11 +15,11 @@ TARGET_OBJ:=$(SRCDIR)main.o
 STATIC_LIB:=$(LIBS)libbpt.a
 
 # Include more files if you write another source file.
-SRCS_FOR_LIB:=$(SRCDIR)bpt.cpp $(SRCDIR)file.cpp $(SRCDIR)dbapi.cpp $(SRCDIR)page.cpp $(SRCDIR)buffer.cpp
+SRCS_FOR_LIB:=$(SRCDIR)bpt.cpp $(SRCDIR)file.cpp $(SRCDIR)dbapi.cpp $(SRCDIR)page.cpp $(SRCDIR)buffer.cpp $(SRCDIR)dbms.cpp
 OBJS_FOR_LIB:=$(SRCS_FOR_LIB:.cpp=.o)
 
 CFLAGS+= -g -fPIC -I $(INC)
-CXXFLAGS+= -std=c++1z -Wall -g -fPIC -I $(INC)
+CXXFLAGS+= -std=c++1z -Wall  -g -fPIC -I $(INC) -pg
 
 TARGET=main
 

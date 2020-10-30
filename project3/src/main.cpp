@@ -1,22 +1,43 @@
+#include <cassert>
 #include <fstream>
 #include <iostream>
 #include <string>
 
+// for performance test
+#include <algorithm>
+#include <chrono>
+#include <random>
+#include <vector>
+
 #include "common.h"
 #include "dbapi.h"
+#include "buffer.h"
 
 using std::cin;
 using std::cout;
 using std::endl;
 
+#define PERF_TEST
+
 int main()
 {
+    std::ios_base::sync_with_stdio(false);
+    std::cin.tie(0);
+
+    if (FAILED(init_db(1000)))
+    {
+#ifndef PERF_TEST
+        cout << "ERROR: cannot init db" << endl;
+#endif
+        return -1;
+    }
+
+#ifndef PERF_TEST
     bool is_running = true;
 
-    std::istream& in_stream = cin;
-    // std::istream&& in_stream = std::ifstream("input.txt");
+    // std::istream& in_stream = cin;
+    std::istream&& in_stream = std::ifstream("input.txt");
 
-    init_db(100);
     while (!in_stream.eof() && is_running)
     {
         std::string cmd;
@@ -36,7 +57,8 @@ int main()
             }
             else
             {
-                cout << "open table " << arg << " (id : " << table_id << ")." << endl;
+                cout << "open table " << arg << " (id : " << table_id << ")."
+                     << endl;
             }
         }
         else if (cmd == "close")
@@ -50,12 +72,11 @@ int main()
             else
             {
                 cout << "close table failed." << endl;
-            }            
+            }
         }
         else if (cmd == "quit")
         {
             cout << "dbms will be shutdown." << endl;
-
             is_running = false;
         }
         else if (cmd == "insert")
@@ -104,7 +125,72 @@ int main()
                 cout << "delete " << key << " failed." << endl;
             }
         }
+        else if (cmd == "sep")
+        {
+            cout << "sep" << endl;
+        }
+    }
+#else
+    const int N = 10'000;
+
+    std::random_device rd;
+    std::mt19937 engine(rd());
+
+    const int tid = open_table("test.db");
+
+    {
+        std::vector<int> keys(N);
+        std::iota(begin(keys), end(keys), 1);
+        std::shuffle(begin(keys), end(keys), engine);
+
+        std::vector<std::string> values(N);
+        std::transform(begin(keys), end(keys), begin(values),
+                    [](int k) { return std::to_string(k); });
+
+        const auto start_point = std::chrono::system_clock::now();
+
+        for (int i = 0; i < N; ++i) {
+            assert(db_insert(tid, keys[i], &values[i][0]) == SUCCESS);
+
+            if (!BufMgr().check_all_unpinned())
+            {
+                BufMgr().dump_frame_stat();
+                abort();
+            }
+        }
+
+        const auto end_point = std::chrono::system_clock::now();
+
+        std::cerr << "time: "
+                << std::chrono::duration_cast<std::chrono::milliseconds>(
+                        end_point - start_point)
+                        .count()
+                << " ms" << endl;
     }
 
+    {
+        std::vector<int> keys(N/10);
+        std::iota(begin(keys), end(keys), 1);
+        std::shuffle(begin(keys), end(keys), engine);
+
+        std::vector<std::string> values(N/10);
+        std::transform(begin(keys), end(keys), begin(values),
+                    [](int k) { return std::to_string(k); });
+
+        const auto start_point = std::chrono::system_clock::now();
+
+        for (int i = 0; i < N/10; ++i)
+            assert(db_delete(tid, keys[i]) == SUCCESS);
+
+        const auto end_point = std::chrono::system_clock::now();
+
+        std::cerr << "time: "
+                << std::chrono::duration_cast<std::chrono::milliseconds>(
+                        end_point - start_point)
+                        .count()
+                << " ms" << endl;
+    }
+
+#endif
     shutdown_db();
 }

@@ -5,8 +5,8 @@
 #include <optional>
 #include <set>
 #include <string>
-#include <tuple>
 #include <unordered_map>
+#include <utility>
 
 // SIZE CONSTANTS
 constexpr size_t PAGE_DATA_VALUE_SIZE = 120;
@@ -30,37 +30,26 @@ constexpr size_t HEADER_PAGE_USED = 24;
 constexpr size_t HEADER_PAGE_RESERVED = PAGE_SIZE - HEADER_PAGE_USED;
 
 // TYPES
+using table_id_t = int;
 using pagenum_t = uint64_t;
 
-class TableID final
-{
- public:
-    constexpr TableID() noexcept = default;
-    constexpr explicit TableID(int table_id) noexcept : table_id_(table_id)
-    {
-    }
+using table_page_t = std::pair<table_id_t, pagenum_t>;
 
-    constexpr operator int() const noexcept
-    {
-        return table_id_;
-    }
-
- private:
-    int table_id_{ -1 };
-};
 namespace std
 {
 template <>
-struct hash<TableID>
+struct hash<table_page_t>
 {
-    std::size_t operator()(const TableID& tid) const
+    std::size_t operator()(const table_page_t& tp) const
     {
-        return hash<int>()(tid);
+        auto [lhs, rhs] = tp;
+
+        rhs ^= lhs + 0x9e377b9 + (rhs << 6) + (rhs >> 2);
+        return rhs;
     }
 };
 }  // namespace std
 
-using table_page_t = std::tuple<TableID, pagenum_t>;
 constexpr pagenum_t NULL_PAGE_NUM = 0;
 
 struct page_data_t final
@@ -123,8 +112,13 @@ union page_t
     } node;
 };
 
+class Page;
+
 class File final
 {
+ public:
+    static constexpr uint64_t NEW_PAGES_WHEN_NO_FREE_PAGES = 1;
+
  public:
     ~File();
 
@@ -137,20 +131,23 @@ class File final
 
     [[nodiscard]] bool is_open() const;
 
-    [[nodiscard]] bool file_alloc_page(pagenum_t& pagenum);
-    [[nodiscard]] bool file_free_page(pagenum_t pagenum);
+    [[nodiscard]] bool file_alloc_page(Page& header, pagenum_t& pagenum);
+    [[nodiscard]] bool file_free_page(Page& header, pagenum_t pagenum);
     [[nodiscard]] bool file_read_page(pagenum_t pagenum, page_t* dest);
     [[nodiscard]] bool file_write_page(pagenum_t pagenum, const page_t* src);
 
  private:
-    [[nodiscard]] bool open(const std::string& filename, TableID table_id);
+    [[nodiscard]] bool open(const std::string& filename, table_id_t table_id);
     void close();
+
+    [[nodiscard]] bool extend(Page& header, uint64_t new_pages);
+    [[nodiscard]] size_t capacity() const;
 
     [[nodiscard]] bool read(size_t size, size_t offset, void* value);
     [[nodiscard]] bool write(size_t size, size_t offset, const void* value);
 
  private:
-    TableID table_id_;
+    table_id_t table_id_{ -1 };
     int file_handle_{ -1 };
 
     friend class TableManager;
@@ -162,20 +159,21 @@ class TableManager final
     static constexpr size_t MAX_TABLE_COUNT = 10;
 
  public:
-    static TableManager& get();
-    static File& get(TableID table_id);
+    File& get(table_id_t table_id);
 
-    [[nodiscard]] std::optional<TableID> open_table(
+    [[nodiscard]] std::optional<table_id_t> open_table(
         const std::string& filename);
-    [[nodiscard]] bool close_table(TableID table_id);
-    [[nodiscard]] bool is_open(TableID table_id) const;
+    [[nodiscard]] bool close_table(table_id_t table_id);
+    [[nodiscard]] bool is_open(table_id_t table_id) const;
 
  private:
     TableManager() = default;
 
  private:
-    std::unordered_map<std::string, TableID> table_id_tbl_;
-    std::unordered_map<TableID, File> tables_;
+    std::unordered_map<std::string, table_id_t> table_id_tbl_;
+    std::unordered_map<table_id_t, File> tables_;
+
+    friend class DBMS;
 };
 
 #endif  // FILE_H_

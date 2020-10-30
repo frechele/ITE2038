@@ -3,6 +3,9 @@
 #include "buffer.h"
 #include "common.h"
 #include "file.h"
+#include "dbms.h"
+
+#include <cassert>
 
 #include <algorithm>
 #include <array>
@@ -65,31 +68,25 @@ int binary_search_key(T* data, int size, int64_t key)
 }
 }  // namespace
 
-BPTree& BPTree::get()
-{
-    static BPTree instance;
-    return instance;
-}
-
 int BPTree::open_table(const std::string& filename)
 {
-    if (auto opt = TableManager::get().open_table(filename); opt.has_value())
+    if (auto opt = TblMgr().open_table(filename); opt.has_value())
         return opt.value();
 
     return -1;
 }
 
-bool BPTree::close_table(TableID table_id)
+bool BPTree::close_table(table_id_t table_id)
 {
-    return TableManager::get().close_table(table_id);
+    return BufMgr().close_table(table_id);
 }
 
-bool BPTree::is_open(TableID table_id) const
+bool BPTree::is_open(table_id_t table_id)
 {
-    return TableManager::get().is_open(table_id);
+    return TblMgr().is_open(table_id);
 }
 
-bool BPTree::insert(TableID table_id, const page_data_t& record)
+bool BPTree::insert(table_id_t table_id, const page_data_t& record)
 {
     return buffer(
         [&](Page& header) {
@@ -138,7 +135,7 @@ bool BPTree::insert(TableID table_id, const page_data_t& record)
         table_id);
 }
 
-bool BPTree::remove(TableID table_id, int64_t key)
+bool BPTree::remove(table_id_t table_id, int64_t key)
 {
     return buffer(
         [&](Page& header) {
@@ -155,7 +152,7 @@ bool BPTree::remove(TableID table_id, int64_t key)
         table_id);
 }
 
-std::optional<page_data_t> BPTree::find(TableID table_id, int64_t key) const
+std::optional<page_data_t> BPTree::find(table_id_t table_id, int64_t key)
 {
     std::optional<page_data_t> result{ std::nullopt };
 
@@ -170,8 +167,8 @@ std::optional<page_data_t> BPTree::find(TableID table_id, int64_t key) const
     return result;
 }
 
-std::vector<page_data_t> BPTree::find_range(TableID table_id, int64_t key_start,
-                                            int64_t key_end) const
+std::vector<page_data_t> BPTree::find_range(table_id_t table_id,
+                                            int64_t key_start, int64_t key_end)
 {
     std::vector<page_data_t> result;
 
@@ -220,7 +217,7 @@ std::vector<page_data_t> BPTree::find_range(TableID table_id, int64_t key_start,
     return result;
 }
 
-std::string BPTree::to_string(TableID table_id) const
+std::string BPTree::to_string(table_id_t table_id)
 {
     std::stringstream ss;
 
@@ -300,13 +297,13 @@ std::string BPTree::to_string(TableID table_id) const
     return ss.str();
 }
 
-table_page_t BPTree::make_node(Page& header, bool is_leaf) const
+table_page_t BPTree::make_node(Page& header, bool is_leaf)
 {
-    const TableID table_id = header.table_id();
+    const table_id_t table_id = header.table_id();
 
     pagenum_t pagenum;
-    CHECK_FAILURE2(TableManager::get(table_id).file_alloc_page(pagenum),
-                   std::make_tuple(table_id, NULL_PAGE_NUM));
+    CHECK_FAILURE2(TblMgr().get(table_id).file_alloc_page(header, pagenum),
+                   std::make_pair(table_id, NULL_PAGE_NUM));
 
     CHECK_FAILURE2(buffer(
                        [&](Page& page) {
@@ -319,12 +316,12 @@ table_page_t BPTree::make_node(Page& header, bool is_leaf) const
                            return true;
                        },
                        table_id, pagenum),
-                   std::make_tuple(table_id, NULL_PAGE_NUM));
+                   std::make_pair(table_id, NULL_PAGE_NUM));
 
     return { table_id, pagenum };
 }
 
-std::optional<page_data_t> BPTree::find(Page& header, int64_t key) const
+std::optional<page_data_t> BPTree::find(Page& header, int64_t key)
 {
     auto [table_id, pagenum] = find_leaf(header, key);
     CHECK_FAILURE2(pagenum != NULL_PAGE_NUM, std::nullopt);
@@ -349,9 +346,9 @@ std::optional<page_data_t> BPTree::find(Page& header, int64_t key) const
     return result;
 }
 
-table_page_t BPTree::find_leaf(Page& header, int64_t key) const
+table_page_t BPTree::find_leaf(Page& header, int64_t key)
 {
-    const TableID table_id = header.table_id();
+    const table_id_t table_id = header.table_id();
 
     if (header.header_page().root_page_number == NULL_PAGE_NUM)
         return { table_id, NULL_PAGE_NUM };
@@ -389,17 +386,17 @@ table_page_t BPTree::find_leaf(Page& header, int64_t key) const
                     return true;
                 },
                 table_id, current_num),
-            std::make_tuple(table_id, NULL_PAGE_NUM));
+            std::make_pair(table_id, NULL_PAGE_NUM));
     }
 
     return { table_id, current_num };
 }
 
-int BPTree::path_to_root(Page& header, pagenum_t child_num) const
+int BPTree::path_to_root(Page& header, pagenum_t child_num)
 {
     int length = 0;
 
-    const TableID table_id = header.table_id();
+    const table_id_t table_id = header.table_id();
     const pagenum_t root_page = header.pagenum();
     while (child_num != root_page)
     {
@@ -577,7 +574,7 @@ bool BPTree::insert_into_node_after_splitting(Page& header, Page& old,
                                               int left_index, Page& right,
                                               int64_t key)
 {
-    const TableID table_id = header.table_id();
+    const table_id_t table_id = header.table_id();
 
     std::array<page_branch_t, INTERNAL_ORDER> temp_data;
 
@@ -647,7 +644,7 @@ bool BPTree::insert_into_node_after_splitting(Page& header, Page& old,
 
 bool BPTree::delete_entry(Page& header, Page& node, int64_t key)
 {
-    const TableID table_id = header.table_id();
+    const table_id_t table_id = header.table_id();
     const int is_leaf = node.header().is_leaf;
 
     if (is_leaf)
@@ -754,13 +751,13 @@ bool BPTree::adjust_root(Page& header, Page& root)
 
     header.mark_dirty();
 
-    return root.free();
+    return root.free(header);
 }
 
 bool BPTree::coalesce_nodes(Page& header, Page& parent, Page& left, Page& right,
                             int64_t k_prime)
 {
-    const TableID table_id = header.table_id();
+    const table_id_t table_id = header.table_id();
     const int insertion_index = left.header().num_keys;
 
     if (right.header().is_leaf)
@@ -816,13 +813,13 @@ bool BPTree::coalesce_nodes(Page& header, Page& parent, Page& left, Page& right,
 
     left.mark_dirty();
     CHECK_FAILURE(delete_entry(header, parent, k_prime));
-    return right.free();
+    return right.free(header);
 }
 
 bool BPTree::redistribute_nodes(Page& header, Page& parent, Page& left,
                                 Page& right, int k_prime_index, int64_t k_prime)
 {
-    const TableID table_id = header.table_id();
+    const table_id_t table_id = header.table_id();
 
     const int left_num_key = left.header().num_keys;
     const int right_num_key = right.header().num_keys;

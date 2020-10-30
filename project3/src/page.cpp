@@ -1,12 +1,12 @@
 #include "page.h"
 
 #include "buffer.h"
+#include "dbms.h"
 
 #include <memory.h>
 #include <utility>
 
-Page::Page(BufferBlock& block)
-    : block_(block)
+Page::Page(BufferBlock& block) : block_(block)
 {
 }
 
@@ -22,20 +22,20 @@ void Page::clear()
 
 void Page::mark_dirty()
 {
-	block_.mark_dirty();
+    block_.mark_dirty();
 }
 
-bool Page::free()
+bool Page::free(Page& header)
 {
-    return TableManager::get(table_id()).file_free_page(pagenum());
+    return TblMgr().get(table_id()).file_free_page(header, pagenum());
 }
 
-pagenum_t Page::pagenum() const 
+pagenum_t Page::pagenum() const
 {
     return block_.pagenum();
 }
 
-TableID Page::table_id() const 
+table_id_t Page::table_id() const
 {
     return block_.table_id();
 }

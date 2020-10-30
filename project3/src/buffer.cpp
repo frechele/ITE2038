@@ -1,222 +1,261 @@
 #include "buffer.h"
 
+#include "dbms.h"
 #include "page.h"
 
-#include <cassert>
 #include <memory.h>
+#include <cassert>
+
+#include <iostream>
 
 void BufferBlock::lock()
 {
+    //assert(pin_count_ < 1);
     ++pin_count_;
 }
 
 void BufferBlock::unlock()
 {
-	assert(pin_count_ > 0);
+    assert(pin_count_ > 0);
     --pin_count_;
 }
 
 page_t& BufferBlock::frame()
 {
-	assert(pin_count_ > 0);
-	return *frame_;
+    assert(pin_count_ > 0);
+    return *frame_;
 }
 
 void BufferBlock::mark_dirty() noexcept
 {
-	is_dirty_ = true;
+    is_dirty_ = true;
 }
 
 void BufferBlock::clear()
 {
-	memset(frame_, 0, PAGE_SIZE);
+    memset(frame_, 0, PAGE_SIZE);
 
-	table_id_ = TableID();
-	pagenum_ = NULL_PAGE_NUM;
+    table_id_ = -1;
+    pagenum_ = NULL_PAGE_NUM;
 
-	is_dirty_ = false;
-	pin_count_ = 0;
-}
-
-BufferManager& BufferManager::get()
-{
-    static BufferManager instance;
-
-    return instance;
+    is_dirty_ = false;
+    pin_count_ = 0;
 }
 
 bool BufferManager::initialize(int num_buf)
 {
     if (num_buf <= 0)
-	{
+    {
         return true;
-	}
+    }
 
-	page_arr_ = new (std::nothrow) page_t[num_buf];
-	CHECK_FAILURE(page_arr_ != nullptr);
+    page_arr_ = new (std::nothrow) page_t[num_buf];
+    CHECK_FAILURE(page_arr_ != nullptr);
 
-	for (int i = 0; i < num_buf; ++i)
-	{
-		BufferBlock* block = new (std::nothrow) BufferBlock;
-		CHECK_FAILURE(block != nullptr);
+    for (int i = 0; i < num_buf; ++i)
+    {
+        BufferBlock* block = new (std::nothrow) BufferBlock;
+        CHECK_FAILURE(block != nullptr);
 
-		block->frame_ = &page_arr_[i];
+        block->frame_ = &page_arr_[i];
 
-		enqueue(block);
-	}
+        enqueue(block);
+    }
+
+    block_tbl_.reserve(num_buf);
 
     return true;
 }
 
 bool BufferManager::shutdown()
 {
-	// list is empty
-	if (head_ == nullptr)
-	{
-		return true;
-	}
+    // list is empty
+    if (head_ == nullptr)
+    {
+        return true;
+    }
 
-	BufferBlock* tmp;
-	BufferBlock* current = head_;
-	do
-	{
-		if (current->is_dirty_)
-		{
-			const TableID table_id = current->table_id_;
-			const pagenum_t pagenum = current->pagenum_;
+    BufferBlock* tmp;
+    BufferBlock* current = head_;
+    do
+    {
+        if (current->is_dirty_)
+        {
+            const table_id_t table_id = current->table_id_;
+            const pagenum_t pagenum = current->pagenum_;
 
-			CHECK_FAILURE(TableManager::get(table_id).file_write_page(pagenum, current->frame_));
-		}
+            CHECK_FAILURE(TblMgr().get(table_id).file_write_page(
+                pagenum, current->frame_));
+        }
 
-		tmp = current->next_;
-		delete current;
-		current = tmp;
-	} while (current != head_);
+        tmp = current->next_;
+        delete current;
+        current = tmp;
+    } while (current != head_);
 
-	delete[] page_arr_;
+    delete[] page_arr_;
 
     return true;
 }
 
 bool BufferManager::close_table(int table_id)
 {
-	for (const auto& pr : block_tbl_)
-	{
-		auto [pr_table_id, _] = pr.first;
+    for (const auto& pr : block_tbl_)
+    {
+        auto [pr_table_id, _] = pr.first;
 
-		if (pr_table_id == table_id)
-		{
-			while (pr.second->pin_count_ > 0);
+        if (pr_table_id == table_id)
+        {
+            while (pr.second->pin_count_ > 0)
+                ;
 
-			CHECK_FAILURE(eviction(pr.second));
-		}
-	}
+            CHECK_FAILURE(eviction(pr.second));
+        }
+    }
 
-	return true;
+    return TblMgr().close_table(table_id);
 }
 
-bool BufferManager::get_page(TableID table_id, pagenum_t pagenum, std::optional<Page>& page)
+bool BufferManager::get_page(table_id_t table_id, pagenum_t pagenum,
+                             std::optional<Page>& page)
 {
-	BufferBlock* current = head_;
+    BufferBlock* current = head_;
 
-	auto it = block_tbl_.find({ table_id, pagenum });
-	if (it != end(block_tbl_))
-	{
-		current = it->second;
-	}
-	else
-	{
-		if (current->table_id_ != -1)
-			current = eviction();
+    auto it = block_tbl_.find({ table_id, pagenum });
+    if (it != end(block_tbl_))
+    {
+        current = it->second;
+    }
+    else
+    {
+        if (current->table_id_ != -1)
+            current = eviction();
 
-		CHECK_FAILURE(current != nullptr);
+        CHECK_FAILURE(current != nullptr);
 
-		current->table_id_ = table_id;
-		current->pagenum_ = pagenum;
+        current->table_id_ = table_id;
+        current->pagenum_ = pagenum;
 
-		CHECK_FAILURE(TableManager::get(table_id).file_read_page(pagenum, current->frame_));
-		block_tbl_.insert_or_assign({ table_id, pagenum }, current);
-	}
-	
-	current->lock();
+        CHECK_FAILURE(TblMgr().get(table_id).file_read_page(
+            pagenum, current->frame_));
+        block_tbl_.insert_or_assign({ table_id, pagenum }, current);
+    }
 
-	unlink_and_enqueue(current);
-	page.emplace(*current);
+    current->lock();
 
-	return true;
+    unlink_and_enqueue(current);
+    page.emplace(*current);
+
+    return true;
 }
 
 void BufferManager::enqueue(BufferBlock* block)
 {
-	// <- past       new ->
-	//  head <> ... <> tail
+    // <- past       new ->
+    //  head <> ... <> tail
 
-	assert((head_ == nullptr && tail_ == nullptr) || (head_ != nullptr && tail_ != nullptr));
+    assert((head_ == nullptr && tail_ == nullptr) ||
+           (head_ != nullptr && tail_ != nullptr));
 
-	// when linked list is empty
-	if (head_ == nullptr)
-	{
-		head_ = block;
-		tail_ = block;
+    // when linked list is empty
+    if (head_ == nullptr)
+    {
+        head_ = block;
+        tail_ = block;
 
-		head_->next_ = block;
-		tail_->prev_ = block;
-	}
-	else
-	{
-		block->prev_ = tail_;
-		tail_->next_ = block;
-		tail_ = block;
-	}
+        head_->next_ = block;
+        tail_->prev_ = block;
+    }
+    else
+    {
+        block->prev_ = tail_;
+        tail_->next_ = block;
+        tail_ = block;
+    }
 
-	head_->prev_ = tail_;
-	tail_->next_ = head_;
+    head_->prev_ = tail_;
+    tail_->next_ = head_;
 }
 
 void BufferManager::unlink_and_enqueue(BufferBlock* block)
 {
-	BufferBlock* prev = block->prev_;
-	BufferBlock* next = block->next_;
+    BufferBlock* prev = block->prev_;
+    BufferBlock* next = block->next_;
 
-	block->prev_ = nullptr;
-	block->next_ = nullptr;
+    block->prev_ = nullptr;
+    block->next_ = nullptr;
 
-	prev->next_ = next;
-	next->prev_ = prev;
+    prev->next_ = next;
+    next->prev_ = prev;
 
-	if (block == head_)
-	{
-		head_ = next;
-	}
-	if (block == tail_)
-	{
-		tail_ = prev;
-	}
+    if (block == head_)
+    {
+        head_ = next;
+    }
+    if (block == tail_)
+    {
+        tail_ = prev;
+    }
 
-	enqueue(block);
+    enqueue(block);
 }
 
 BufferBlock* BufferManager::eviction()
 {
-	BufferBlock* victim = head_;
-	while (victim->pin_count_ > 0)
-		victim = victim->next_;
+    BufferBlock* victim = head_;
+    while (victim->pin_count_ > 0) {
+        victim = victim->next_;
+        assert(victim != head_);
+    }
 
-	return eviction(victim);
+    return eviction(victim);
 }
 
 BufferBlock* BufferManager::eviction(BufferBlock* block)
 {
-	const TableID table_id = block->table_id();
-	const pagenum_t pagenum = block->pagenum();
+    // dump_frame_stat();
 
-	if (block->is_dirty_)
-	{
-		CHECK_FAILURE2(TableManager::get(table_id).file_write_page(pagenum, block->frame_), nullptr);
-	}
+    const table_id_t table_id = block->table_id();
+    const pagenum_t pagenum = block->pagenum();
 
-	block->clear();
-	block_tbl_.erase({ table_id, pagenum });
+    if (block->is_dirty_)
+    {
+        CHECK_FAILURE2(
+            TblMgr().get(table_id).file_write_page(pagenum, block->frame_),
+            nullptr);
+    }
 
-	return block;
+    block->clear();
+    block_tbl_.erase({ table_id, pagenum });
+
+    return block;
+}
+
+bool BufferManager::check_all_unpinned() const
+{
+    BufferBlock* current = head_;
+
+    do
+    {
+        if (current->pin_count_ > 0)
+            return false;
+    } while (current != head_);
+
+    return true;
+}
+
+void BufferManager::dump_frame_stat() const
+{
+    BufferBlock* current = head_;
+
+    int id = 0;
+    do
+    {
+        std::cerr << "id: " << id << " tid: " << current->table_id_
+                  << " pid: " << current->pagenum_
+                  << " pin: " << current->pin_count_ << '\n';
+
+        ++id;
+        current = current->next_;
+    } while (current != head_);
 }

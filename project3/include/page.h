@@ -14,10 +14,10 @@ class Page final
     void clear();
     void mark_dirty();
 
-    [[nodiscard]] bool free();
+    [[nodiscard]] bool free(Page& header);
 
     [[nodiscard]] pagenum_t pagenum() const;
-    [[nodiscard]] TableID table_id() const;
+    [[nodiscard]] table_id_t table_id() const;
 
     [[nodiscard]] header_page_t& header_page();
     [[nodiscard]] const header_page_t& header_page() const;
