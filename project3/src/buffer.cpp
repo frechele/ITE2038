@@ -10,7 +10,7 @@
 
 void BufferBlock::lock()
 {
-    //assert(pin_count_ < 1);
+    assert(pin_count_ < 1);
     ++pin_count_;
 }
 
