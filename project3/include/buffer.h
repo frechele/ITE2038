@@ -75,7 +75,7 @@ class BufferManager final
 
     page_t* page_arr_{ nullptr };
 
-    std::unordered_map<table_page_t, BufferBlock*> block_tbl_;
+    std::unordered_map<table_id_t, std::unordered_map<pagenum_t, BufferBlock*>> block_tbl_;
     
     friend class DBMS;
 };
@@ -91,4 +91,12 @@ template <typename Function>
     return func(opt.value());
 }
 
+
+template <typename Function>
+[[nodiscard]] bool buffer(Function&& func, table_page_t tid_pid)
+{
+    auto [tid, pid] = tid_pid;
+
+    return buffer(func, tid, pid);
+}
 #endif  // BUFFER_H_

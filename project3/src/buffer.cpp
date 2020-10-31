@@ -103,17 +103,14 @@ bool BufferManager::shutdown()
 
 bool BufferManager::close_table(int table_id)
 {
-    for (const auto& pr : block_tbl_)
+    auto& tbl_map = block_tbl_[table_id];
+
+    for (const auto& pr : tbl_map)
     {
-        auto [pr_table_id, _] = pr.first;
+        while (pr.second->pin_count_ > 0)
+            ;
 
-        if (pr_table_id == table_id)
-        {
-            while (pr.second->pin_count_ > 0)
-                ;
-
-            CHECK_FAILURE(eviction(pr.second));
-        }
+        CHECK_FAILURE(eviction(pr.second));
     }
 
     return TblMgr().close_table(table_id);
@@ -124,8 +121,9 @@ bool BufferManager::get_page(table_id_t table_id, pagenum_t pagenum,
 {
     BufferBlock* current = head_;
 
-    auto it = block_tbl_.find({ table_id, pagenum });
-    if (it != end(block_tbl_))
+    auto tblIt = block_tbl_.find(table_id);
+    std::unordered_map<pagenum_t, BufferBlock*>::iterator it;
+    if (tblIt != end(block_tbl_) && (it = tblIt->second.find(pagenum)) != tblIt->second.end())
     {
         current = it->second;
         current->lock();
@@ -144,7 +142,12 @@ bool BufferManager::get_page(table_id_t table_id, pagenum_t pagenum,
 
         CHECK_FAILURE(TblMgr().get(table_id).file_read_page(
             pagenum, current->frame_));
-        block_tbl_.insert_or_assign({ table_id, pagenum }, current);
+
+        if (tblIt == end(block_tbl_))
+        {
+            block_tbl_.insert_or_assign(table_id, std::unordered_map<pagenum_t, BufferBlock*>());
+        }
+        block_tbl_[table_id].insert_or_assign(pagenum, current);
     }
 
     unlink_and_enqueue(current);
@@ -230,7 +233,7 @@ BufferBlock* BufferManager::eviction(BufferBlock* block)
     }
 
     block->clear();
-    block_tbl_.erase({ table_id, pagenum });
+    block_tbl_[table_id].erase(pagenum);
 
     return block;
 }

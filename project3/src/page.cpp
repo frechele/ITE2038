@@ -25,11 +25,6 @@ void Page::mark_dirty()
     block_.mark_dirty();
 }
 
-bool Page::free(Page& header)
-{
-    return TblMgr().get(table_id()).file_free_page(header, pagenum());
-}
-
 pagenum_t Page::pagenum() const
 {
     return block_.pagenum();

@@ -74,66 +74,70 @@ bool File::is_open() const
     return file_handle_ > 0;
 }
 
-bool File::file_alloc_page(Page& header, pagenum_t& pagenum)
+bool File::file_alloc_page(pagenum_t& pagenum)
 {
     pagenum = NULL_PAGE_NUM;
 
-    if (header.header_page().free_page_number != NULL_PAGE_NUM)
-    {
-        const pagenum_t free_page_number =
-            header.header_page().free_page_number;
-
-        CHECK_FAILURE(buffer(
-            [&](Page& free_page) {
-                pagenum = header.header_page().free_page_number;
-
-                header.header_page().free_page_number =
-                    free_page.free_header().next_free_page_number;
-
-                return true;
-            },
-            table_id_, free_page_number));
-    }
-    else
-    {
-        pagenum = header.header_page().num_pages;
-
-        if (capacity() <= header.header_page().num_pages)
-            CHECK_FAILURE(extend(header, NEW_PAGES_WHEN_NO_FREE_PAGES));
-
-        CHECK_FAILURE(buffer(
-            [&](Page& new_page) {
-                new_page.clear();
-
-                new_page.mark_dirty();
-
-                return true;
-            },
-            table_id_, pagenum));
-
-        ++header.header_page().num_pages;
-    }
-
-    header.mark_dirty();
-
-    return true;
-}
-
-bool File::file_free_page(Page& header, pagenum_t pagenum)
-{
-    return buffer(
-        [&](Page& free_page) {
-            free_page.free_header().next_free_page_number =
+    return buffer([&](Page& header) {
+        if (header.header_page().free_page_number != NULL_PAGE_NUM)
+        {
+            const pagenum_t free_page_number =
                 header.header_page().free_page_number;
 
-            header.header_page().free_page_number = pagenum;
+            CHECK_FAILURE(buffer(
+                [&](Page& free_page) {
+                    pagenum = header.header_page().free_page_number;
 
-            free_page.mark_dirty();
-            header.mark_dirty();
+                    header.header_page().free_page_number =
+                        free_page.free_header().next_free_page_number;
 
-            return true;
-        },
-        table_id_, pagenum);
+                    return true;
+                },
+                table_id_, free_page_number));
+        }
+        else
+        {
+            pagenum = header.header_page().num_pages;
+
+            // if (capacity() <= header.header_page().num_pages)
+            //     CHECK_FAILURE(extend(header, NEW_PAGES_WHEN_NO_FREE_PAGES));
+
+            CHECK_FAILURE(buffer(
+                [&](Page& new_page) {
+                    new_page.clear();
+
+                    new_page.mark_dirty();
+
+                    return true;
+                },
+                table_id_, pagenum));
+
+            ++header.header_page().num_pages;
+        }
+
+        header.mark_dirty();
+
+        return true;
+    }, table_id_);
+}
+
+bool File::file_free_page(pagenum_t pagenum)
+{
+    return buffer([&](Page& header) {
+        return buffer(
+            [&](Page& free_page) {
+                free_page.free_header().next_free_page_number =
+                    header.header_page().free_page_number;
+
+                header.header_page().free_page_number = pagenum;
+
+                free_page.mark_dirty();
+                header.mark_dirty();
+
+                return true;
+            },
+            table_id_, pagenum);
+    }, table_id_);
 }
 
 bool File::extend(Page& header, uint64_t new_pages)

@@ -14,8 +14,6 @@ class Page final
     void clear();
     void mark_dirty();
 
-    [[nodiscard]] bool free(Page& header);
-
     [[nodiscard]] pagenum_t pagenum() const;
     [[nodiscard]] table_id_t table_id() const;
 

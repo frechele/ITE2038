@@ -57,5 +57,3 @@ TableManager& DBMS::get_table_manager()
 {
     return *tbl_mgr_;
 }
-
-

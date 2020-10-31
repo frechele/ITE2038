@@ -13,6 +13,8 @@
 #include "dbapi.h"
 #include "buffer.h"
 
+#include "bpt.h"
+
 using std::cin;
 using std::cout;
 using std::endl;
@@ -24,7 +26,7 @@ int main()
     std::ios_base::sync_with_stdio(false);
     std::cin.tie(0);
 
-    if (FAILED(init_db(100)))
+    if (FAILED(init_db(3)))
     {
 #ifndef PERF_TEST
         cout << "ERROR: cannot init db" << endl;
@@ -35,8 +37,8 @@ int main()
 #ifndef PERF_TEST
     bool is_running = true;
 
-    // std::istream& in_stream = cin;
-    std::istream&& in_stream = std::ifstream("input.txt");
+    std::istream& in_stream = cin;
+    // std::istream&& in_stream = std::ifstream("input.txt");
 
     while (!in_stream.eof() && is_running)
     {
@@ -131,12 +133,12 @@ int main()
         }
     }
 #else
-    const int N = 10'000;
+    const int N = 1'000'000;
 
-    std::random_device rd;
-    std::mt19937 engine(rd());
+    //std::random_device rd;
+    std::mt19937 engine(123456);
 
-    const int tid = open_table("/mnt/ssd/dbms/test.db");
+    const int tid = open_table("/mnt/ssd/dbms/ramdisk/test1.db");
 
     {
         std::vector<int> keys(N);
@@ -169,18 +171,24 @@ int main()
     }
 
     {
-        std::vector<int> keys(N/10);
+        const int delete_N = N;
+
+        std::vector<int> keys(delete_N);
         std::iota(begin(keys), end(keys), 1);
         std::shuffle(begin(keys), end(keys), engine);
 
-        std::vector<std::string> values(N/10);
-        std::transform(begin(keys), end(keys), begin(values),
-                    [](int k) { return std::to_string(k); });
-
         const auto start_point = std::chrono::system_clock::now();
 
-        for (int i = 0; i < N/10; ++i)
+        for (int i = 0; i < delete_N; ++i)
+        {
             assert(db_delete(tid, keys[i]) == SUCCESS);
+
+            if (!BufMgr().check_all_unpinned())
+            {
+                BufMgr().dump_frame_stat();
+                abort();
+            }
+        }
 
         const auto end_point = std::chrono::system_clock::now();
 

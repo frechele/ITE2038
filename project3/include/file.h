@@ -34,21 +34,29 @@ using table_id_t = int;
 using pagenum_t = uint64_t;
 
 using table_page_t = std::pair<table_id_t, pagenum_t>;
-
-namespace std
+constexpr table_id_t TABLE_ID(const table_page_t& tpid)
 {
-template <>
-struct hash<table_page_t>
+    return std::get<0>(tpid);
+}
+constexpr pagenum_t PAGENUM(const table_page_t& tpid)
 {
-    std::size_t operator()(const table_page_t& tp) const
-    {
-        auto [lhs, rhs] = tp;
+    return std::get<1>(tpid);
+}
 
-        rhs ^= lhs + 0x9e377b9 + (rhs << 6) + (rhs >> 2);
-        return rhs;
-    }
-};
-}  // namespace std
+// namespace std
+// {
+// template <>
+// struct hash<table_page_t>
+// {
+//     std::size_t operator()(const table_page_t& tp) const
+//     {
+//         auto [lhs, rhs] = tp;
+
+//         rhs ^= lhs + 0x9e377b9 + (rhs << 6) + (rhs >> 2);
+//         return rhs;
+//     }
+// };
+// }  // namespace std
 
 constexpr pagenum_t NULL_PAGE_NUM = 0;
 
@@ -131,8 +139,8 @@ class File final
 
     [[nodiscard]] bool is_open() const;
 
-    [[nodiscard]] bool file_alloc_page(Page& header, pagenum_t& pagenum);
-    [[nodiscard]] bool file_free_page(Page& header, pagenum_t pagenum);
+    [[nodiscard]] bool file_alloc_page(pagenum_t& pagenum);
+    [[nodiscard]] bool file_free_page(pagenum_t pagenum);
     [[nodiscard]] bool file_read_page(pagenum_t pagenum, page_t* dest);
     [[nodiscard]] bool file_write_page(pagenum_t pagenum, const page_t* src);
 
