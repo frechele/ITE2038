@@ -1,0 +1,31 @@
+# Buffer Manager Implementation
+
+## A. Buffer Manager
+### a. LRU Policy
+![img_lru_policy](res/lru_policy.png)  
+  
+Doubly linked list를 이용해 LRU policy를 구현했다. page를 buffer manager에게 요청하면 그에 해당하는 buffer block의 link를 끊고 tail에 insert한다. 따라서 최근 요청된 buffer block일수록 linked list의 tail쪽에 위치하고, 마지막 요청이 오래전일수록 head쪽에 위치하게 된다. 따라서 eviction이 일어날 때는 head부터 victim을 찾는다.
+
+
+### b. Buffer Block Architecture
+![img_buffer_block](res/buffer_block.png)  
+
+Buffer manager 내부에서 `page_t`를 담는 array를 만들고 buffer block에서 이를 pointing하는 방식으로 구현했다. 또한 pin된 횟수를 저장하도록 하였다. 
+
+**<비고>**  
+mutli threading이 필요할 때는 buffer block의 `pin_count` field를 `std::atomic<int>` 타입으로 바꾸는 것을 고려해야한다.
+
+
+### c. Page API & Pin Management
+기존의 page API로는 pin count를 완벽하게 관리하는 것이 힘들었다. 따라서 이번 project에서 page API를 개편했다.
+
+#### 1. Modified Page wrapper
+요청된 page에 대한 buffer block이 결정된다면 buffer manager가 해당 block의 주소를 넣어 `Page` 클래스의 인스턴스를 생성하는 방식으로 구현하였다. 기존에 `page_t` 인스턴스를 `Page` 클래스가 가지고 있는 방식에서 `BufferBlock`에 있는 `page_t` 인스턴스를 이용하도록 수정되었다.
+
+**<비고>**  
+다수의 thread가 같은 buffer block을 가지고 있을 수 있다. 따라서 이 경우 race condition이 발생할 우려가 있는데. 추후 `BufferBlock`마다 mutex를 갖게 하여 수정하는 것을 고려해야한다.
+
+#### 2. Pin management
+생성된 곳과 파괴하는 곳은 같아야 한다는 원칙에 따라 pin count의 관리를 전부 buffer manager 선에서 할 수 있도록 설계했다. Pin count를 올리는 곳은 `BufferManager`의 `get_page` 메소드이다. Pin count를 내리는 것은 `Page` 클래스에 RAII (Resource Acquisition Is Initialization) 패턴을 적용해 `Page` 클래스가 파괴되면 pin count가 내려가도록 했다. 이는 `get_page`에서 pin count를 올리며 `Page` 인스턴스가 생성되기 때문에 `Page`가 파괴되는 시점에 pin count를 내리는 것이 자연스럽기 때문이다. 또한 `Page` 인스턴스에 대한 scope를 더욱 정밀하게 표현하기 위해 `buffer`라는 함수를 만들어 lambda expression을 받아 처리할 수 있게 하였다.
+
+pin을 하는 시점은 선제적 방식과 필요할 때마다 하는 방식 중 후자를 채택했다. 이러한 방식을 채택함으로써 이후 multi threading에서 buffer manager에 unpinned buffer block이 없어 다수의 worker가 대기하는 상황을 최소화 할 수 있을 것이다. 또한 4개 이상의 버퍼 크기에서는 완전히 동작하게 돼 memory가 작은 system에서도 돌아갈 수 있다. 하지만 잦은 unpin으로 다수의 worker가 존재할 경우 eviction이 많이 발생할 우려가 있는데, 이는 추후 multi threading을 지원하면서 테스트 할 필요가 있다.
