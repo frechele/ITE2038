@@ -135,10 +135,10 @@ bool BufferManager::get_page(table_id_t table_id, pagenum_t pagenum,
 
         CHECK_FAILURE(current != nullptr);
 
+        current->lock();
+
         current->table_id_ = table_id;
         current->pagenum_ = pagenum;
-
-        current->lock();
 
         CHECK_FAILURE(TblMgr().get(table_id).file_read_page(
             pagenum, current->frame_));
