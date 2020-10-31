@@ -99,8 +99,8 @@ bool File::file_alloc_page(pagenum_t& pagenum)
         {
             pagenum = header.header_page().num_pages;
 
-            // if (capacity() <= header.header_page().num_pages)
-            //     CHECK_FAILURE(extend(header, NEW_PAGES_WHEN_NO_FREE_PAGES));
+            if (capacity() <= header.header_page().num_pages)
+                CHECK_FAILURE(extend(header, NEW_PAGES_WHEN_NO_FREE_PAGES));
 
             CHECK_FAILURE(buffer(
                 [&](Page& new_page) {
@@ -180,6 +180,30 @@ bool File::write(size_t size, size_t offset, const void* value)
 
     fsync(file_handle_);
     return true;
+}
+
+bool TableManager::initialize()
+{
+    CHECK_FAILURE(instance_ == nullptr);
+
+    instance_ = new (std::nothrow) TableManager;
+    CHECK_FAILURE(instance_ != nullptr);
+
+    return true;
+}
+
+bool TableManager::shutdown()
+{
+    CHECK_FAILURE(instance_ != nullptr);
+
+    delete instance_;
+
+    return true;
+}
+
+TableManager& TableManager::get_instance()
+{
+    return *instance_;
 }
 
 File& TableManager::get(table_id_t table_id)

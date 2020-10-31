@@ -43,21 +43,6 @@ constexpr pagenum_t PAGENUM(const table_page_t& tpid)
     return std::get<1>(tpid);
 }
 
-// namespace std
-// {
-// template <>
-// struct hash<table_page_t>
-// {
-//     std::size_t operator()(const table_page_t& tp) const
-//     {
-//         auto [lhs, rhs] = tp;
-
-//         rhs ^= lhs + 0x9e377b9 + (rhs << 6) + (rhs >> 2);
-//         return rhs;
-//     }
-// };
-// }  // namespace std
-
 constexpr pagenum_t NULL_PAGE_NUM = 0;
 
 struct page_data_t final
@@ -167,6 +152,11 @@ class TableManager final
     static constexpr size_t MAX_TABLE_COUNT = 10;
 
  public:
+    [[nodiscard]] static bool initialize();
+    [[nodiscard]] static bool shutdown();
+
+    [[nodiscard]] static TableManager& get_instance();
+
     File& get(table_id_t table_id);
 
     [[nodiscard]] std::optional<table_id_t> open_table(
@@ -181,7 +171,12 @@ class TableManager final
     std::unordered_map<std::string, table_id_t> table_id_tbl_;
     std::unordered_map<table_id_t, File> tables_;
 
-    friend class DBMS;
+    inline static TableManager* instance_{ nullptr };
 };
+
+inline TableManager& TblMgr()
+{
+    return TableManager::get_instance();
+}
 
 #endif  // FILE_H_

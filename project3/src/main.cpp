@@ -133,12 +133,13 @@ int main()
         }
     }
 #else
-    const int N = 1'000'000;
+    const int N = 10000;
 
     //std::random_device rd;
     std::mt19937 engine(123456);
 
-    const int tid = open_table("/mnt/ssd/dbms/ramdisk/test1.db");
+    const int tid = open_table("/mnt/ssd/dbms/test1.db");
+    assert(tid != -1);
 
     {
         std::vector<int> keys(N);

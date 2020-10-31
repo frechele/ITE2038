@@ -2,7 +2,6 @@
 
 #include "buffer.h"
 #include "common.h"
-#include "dbms.h"
 #include "file.h"
 
 #include <cassert>
@@ -67,6 +66,16 @@ int binary_search_key(T* data, int size, int64_t key)
     return std::distance(data, it);
 }
 }  // namespace
+
+bool BPTree::initialize(int num_buf)
+{
+    return BufferManager::initialize(num_buf);
+}
+
+bool BPTree::shutdown()
+{
+    return BufferManager::shutdown();
+}
 
 int BPTree::open_table(const std::string& filename)
 {

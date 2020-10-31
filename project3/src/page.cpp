@@ -1,7 +1,6 @@
 #include "page.h"
 
 #include "buffer.h"
-#include "dbms.h"
 
 #include <memory.h>
 #include <utility>

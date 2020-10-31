@@ -2,7 +2,6 @@
 
 #include "bpt.h"
 #include "common.h"
-#include "dbms.h"
 
 #include <cstring>
 
@@ -10,14 +9,14 @@
 
 int init_db(int num_buf)
 {
-    CHECK_FAILURE2(DBMS::get().initialize(num_buf), FAIL);
+    CHECK_FAILURE2(BPTree::initialize(num_buf), FAIL);
 
     return SUCCESS;
 }
 
 int shutdown_db()
 {
-    CHECK_FAILURE2(DBMS::get().shutdown(), FAIL);
+    CHECK_FAILURE2(BPTree::shutdown(), FAIL);
 
     return SUCCESS;
 }

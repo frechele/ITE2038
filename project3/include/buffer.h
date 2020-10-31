@@ -2,7 +2,6 @@
 #define BUFFER_H_
 
 #include "common.h"
-#include "dbms.h"
 #include "file.h"
 #include "page.h"
 
@@ -49,8 +48,10 @@ class BufferBlock final
 class BufferManager final
 {
  public:
-    [[nodiscard]] bool initialize(int num_buf);
-    [[nodiscard]] bool shutdown();
+    [[nodiscard]] static bool initialize(int num_buf);
+    [[nodiscard]] static bool shutdown();
+
+    [[nodiscard]] static BufferManager& get_instance();
 
     [[nodiscard]] bool close_table(int table_id);
 
@@ -62,6 +63,8 @@ class BufferManager final
 
  private:
     BufferManager() = default;
+    [[nodiscard]] bool init_lru(int num_buf);
+    [[nodiscard]] bool shutdown_lru();
 
     void enqueue(BufferBlock* block);
     void unlink_and_enqueue(BufferBlock* block);
@@ -76,9 +79,14 @@ class BufferManager final
     page_t* page_arr_{ nullptr };
 
     std::unordered_map<table_id_t, std::unordered_map<pagenum_t, BufferBlock*>> block_tbl_;
-    
-    friend class DBMS;
+
+    inline static BufferManager* instance_{ nullptr };
 };
+
+inline BufferManager& BufMgr()
+{
+   return BufferManager::get_instance();
+}
 
 template <typename Function>
 [[nodiscard]] bool buffer(Function&& func, table_id_t table_id,

@@ -1,6 +1,5 @@
 #include "buffer.h"
 
-#include "dbms.h"
 #include "page.h"
 
 #include <memory.h>
@@ -44,9 +43,40 @@ void BufferBlock::clear()
 
 bool BufferManager::initialize(int num_buf)
 {
+    CHECK_FAILURE(instance_ == nullptr);
+
+    instance_ = new (std::nothrow) BufferManager;
+    CHECK_FAILURE(instance_ != nullptr);
+
+    CHECK_FAILURE(instance_->init_lru(num_buf));
+
+    return TableManager::initialize();
+}
+
+bool BufferManager::shutdown()
+{
+    CHECK_FAILURE(instance_ != nullptr);
+
+    CHECK_FAILURE(instance_->shutdown_lru());
+    
+    CHECK_FAILURE(TableManager::shutdown());
+
+    delete instance_;
+    instance_ = nullptr;
+
+    return true;
+}
+
+BufferManager& BufferManager::get_instance()
+{
+    return *instance_;
+}
+
+bool BufferManager::init_lru(int num_buf)
+{
     if (num_buf <= 0)
     {
-        return true;
+        return false;
     }
 
     page_arr_ = new (std::nothrow) page_t[num_buf];
@@ -67,7 +97,7 @@ bool BufferManager::initialize(int num_buf)
     return true;
 }
 
-bool BufferManager::shutdown()
+bool BufferManager::shutdown_lru()
 {
     // list is empty
     if (head_ == nullptr)

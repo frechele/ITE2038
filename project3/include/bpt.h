@@ -16,6 +16,9 @@ class BPTree
     static constexpr int MERGE_THRESHOLD = 0;
 
  public:
+    [[nodiscard]] static bool initialize(int num_buf);
+    [[nodiscard]] static bool shutdown();
+
     [[nodiscard]] static int open_table(const std::string& filename);
     [[nodiscard]] static bool close_table(table_id_t table_id);
     [[nodiscard]] static bool is_open(table_id_t table_id);
