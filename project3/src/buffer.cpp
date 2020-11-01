@@ -110,7 +110,7 @@ bool BufferManager::shutdown_lru()
         while (current->pin_count_ > 0)
             ;
 
-        clear_block(current);
+        CHECK_FAILURE(clear_block(current));
 
         tmp = current->next_;
         delete current;
@@ -136,7 +136,7 @@ bool BufferManager::close_table(Table& table)
         while (pr.second->pin_count_ > 0)
             ;
 
-        clear_block(pr.second);
+        CHECK_FAILURE(clear_block(pr.second));
     }
 
     tbl_map.clear();
@@ -303,7 +303,7 @@ BufferBlock* BufferManager::eviction(BufferBlock* block)
     const table_id_t table_id = block->table_id();
     const pagenum_t pagenum = block->pagenum();
 
-    clear_block(block);
+    CHECK_FAILURE2(clear_block(block), nullptr);
     block_tbl_[table_id].erase(pagenum);
 
     return block;
