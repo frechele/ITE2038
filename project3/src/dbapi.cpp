@@ -23,6 +23,9 @@ int shutdown_db()
 
 int open_table(char* pathname)
 {
+    if (!TableManager::is_initialized())
+        return FAIL;
+
     if (auto table_id = TblMgr().open_table(pathname); table_id.has_value())
         return table_id.value();
 
@@ -31,11 +34,17 @@ int open_table(char* pathname)
 
 int close_table(int table_id)
 {
+    if (!TableManager::is_initialized())
+        return FAIL;
+
     return TblMgr().close_table(table_id) ? SUCCESS : FAIL;
 }
 
 int db_insert(int table_id, int64_t key, char* value)
 {
+    if (!TableManager::is_initialized())
+        return FAIL;
+
     auto table = TblMgr().get_table(table_id);
 
     if (!table.has_value())
@@ -50,6 +59,9 @@ int db_insert(int table_id, int64_t key, char* value)
 
 int db_find(int table_id, int64_t key, char* ret_val)
 {
+    if (!TableManager::is_initialized())
+        return FAIL;
+
     auto table = TblMgr().get_table(table_id);
 
     if (!table.has_value())
@@ -65,6 +77,9 @@ int db_find(int table_id, int64_t key, char* ret_val)
 
 int db_delete(int table_id, int64_t key)
 {
+    if (!TableManager::is_initialized())
+        return FAIL;
+
     auto table = TblMgr().get_table(table_id);
 
     if (!table.has_value())

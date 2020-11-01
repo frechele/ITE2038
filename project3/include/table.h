@@ -46,6 +46,8 @@ class TableManager final
     [[nodiscard]] static bool initialize(int num_buf);
     [[nodiscard]] static bool shutdown();
 
+    [[nodiscard]] static bool is_initialized();
+
     [[nodiscard]] static TableManager& get_instance();
 
     [[nodiscard]] std::optional<table_id_t> open_table(const std::string& filename);

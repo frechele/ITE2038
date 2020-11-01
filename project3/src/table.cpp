@@ -80,6 +80,11 @@ TableManager& TableManager::get_instance()
     return *instance_;
 }
 
+bool TableManager::is_initialized()
+{
+    return instance_ != nullptr;
+}
+
 std::optional<table_id_t> TableManager::open_table(const std::string& filename)
 {
     table_id_t new_table_id = table_ids_.size() + 1;
@@ -91,7 +96,11 @@ std::optional<table_id_t> TableManager::open_table(const std::string& filename)
     }
 
     CHECK_FAILURE2(new_table_id <= MAX_TABLE_COUNT, std::nullopt);
-    CHECK_FAILURE2(tables_.find(new_table_id) == end(tables_), std::nullopt);
+
+    if (auto tblIt = tables_.find(new_table_id); tblIt != end(tables_))
+    {
+        return tblIt->second.id();
+    }
 
     Table table(new_table_id, filename);
     CHECK_FAILURE(BPTree::open_table(table));
