@@ -37,7 +37,7 @@ pin을 하는 시점은 선제적 방식과 필요할 때마다 하는 방식 �
 또한 4개 이상의 버퍼 크기에서는 완전히 동작하게 돼 memory가 작은 system에서도 돌아갈 수 있다.
 하지만 잦은 unpin으로 다수의 worker가 존재할 경우 eviction이 많이 발생할 우려가 있는데, 이는 추후 multi threading을 지원하면서 테스트 할 필요가 있다.
 
-## B. Mutli Table Supporting
+## B. Multi Table Supporting
 이번 project부터 다수의 table을 열고 닫는 기능이 추가됐다.
 이를 지원하기 위해 각 table을 표현할 `Table` 데이터형을 추가했다. 또한 이를 관리하는 `TableManager` 또한 추가했다.
 각 `Table`엔 table의 filename, id 그리고 FileManager의 `File`을 담는다.
