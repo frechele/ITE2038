@@ -24,7 +24,7 @@ int shutdown_db()
 int open_table(char* pathname)
 {
     if (!TableManager::is_initialized())
-        return FAIL;
+        return -1;
 
     if (auto table_id = TblMgr().open_table(pathname); table_id.has_value())
         return table_id.value();
