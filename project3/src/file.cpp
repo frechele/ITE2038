@@ -3,12 +3,13 @@
 #include "buffer.h"
 #include "common.h"
 #include "page.h"
+#include "table.h"
 
-#include <cassert>
 #include <fcntl.h>
 #include <memory.h>
-#include <unistd.h>
 #include <sys/stat.h>
+#include <unistd.h>
+#include <cassert>
 
 File::~File()
 {
@@ -18,24 +19,20 @@ File::~File()
 File::File(File&& other)
 {
     file_handle_ = other.file_handle_;
-    table_id_ = std::move(other.table_id_);
 
     other.file_handle_ = -1;
-    other.table_id_ = -1;
 }
 
 File& File::operator=(File&& other)
 {
     file_handle_ = other.file_handle_;
-    table_id_ = std::move(other.table_id_);
 
     other.file_handle_ = -1;
-    other.table_id_ = -1;
 
     return *this;
 }
 
-bool File::open(const std::string& filename, table_id_t table_id)
+bool File::open(const std::string& filename)
 {
     if (is_open())
         close();
@@ -56,7 +53,7 @@ bool File::open(const std::string& filename, table_id_t table_id)
         CHECK_FAILURE(file_write_page(0, &file_header));
     }
 
-    table_id_ = table_id;
+    filename_ = filename;
 
     return true;
 }
@@ -69,75 +66,46 @@ void File::close()
     ::close(file_handle_);
 }
 
+const std::string& File::filename() const
+{
+    return filename_;
+}
+
 bool File::is_open() const
 {
     return file_handle_ > 0;
 }
 
-bool File::file_alloc_page(pagenum_t& pagenum)
+bool File::file_alloc_page(Page& header, pagenum_t& pagenum)
 {
     pagenum = NULL_PAGE_NUM;
 
-    return buffer([&](Page& header) {
-        if (header.header_page().free_page_number != NULL_PAGE_NUM)
-        {
-            const pagenum_t free_page_number =
-                header.header_page().free_page_number;
+    if (header.header_page().free_page_number != NULL_PAGE_NUM)
+    {
+        const pagenum_t free_page_number = header.header_page().free_page_number;
 
-            CHECK_FAILURE(buffer(
-                [&](Page& free_page) {
-                    pagenum = header.header_page().free_page_number;
+        pagenum = header.header_page().free_page_number;
 
-                    header.header_page().free_page_number =
-                        free_page.free_header().next_free_page_number;
+        page_t free_page;
+        CHECK_FAILURE(file_read_page(free_page_number, &free_page));
 
-                    return true;
-                },
-                table_id_, free_page_number));
-        }
-        else
-        {
-            pagenum = header.header_page().num_pages;
+        header.header_page().free_page_number = free_page.node.free_header.next_free_page_number;
 
-            if (capacity() <= header.header_page().num_pages)
-                CHECK_FAILURE(extend(header, NEW_PAGES_WHEN_NO_FREE_PAGES));
+        CHECK_FAILURE(file_write_page(free_page_number, &free_page));
+    }
+    else
+    {
+        pagenum = header.header_page().num_pages;
 
-            CHECK_FAILURE(buffer(
-                [&](Page& new_page) {
-                    new_page.clear();
+        if (capacity() <= header.header_page().num_pages)
+            CHECK_FAILURE(extend(header, NEW_PAGES_WHEN_NO_FREE_PAGES));
 
-                    new_page.mark_dirty();
+        ++header.header_page().num_pages;
+    }
+    
+    header.mark_dirty();
 
-                    return true;
-                },
-                table_id_, pagenum));
-
-            ++header.header_page().num_pages;
-        }
-
-        header.mark_dirty();
-
-        return true;
-    }, table_id_);
-}
-
-bool File::file_free_page(pagenum_t pagenum)
-{
-    return buffer([&](Page& header) {
-        return buffer(
-            [&](Page& free_page) {
-                free_page.free_header().next_free_page_number =
-                    header.header_page().free_page_number;
-
-                header.header_page().free_page_number = pagenum;
-
-                free_page.mark_dirty();
-                header.mark_dirty();
-
-                return true;
-            },
-            table_id_, pagenum);
-    }, table_id_);
+    return true;
 }
 
 bool File::extend(Page& header, uint64_t new_pages)
@@ -182,69 +150,54 @@ bool File::write(size_t size, size_t offset, const void* value)
     return true;
 }
 
-bool TableManager::initialize()
+bool FileManager::initialize()
 {
     CHECK_FAILURE(instance_ == nullptr);
 
-    instance_ = new (std::nothrow) TableManager;
-    CHECK_FAILURE(instance_ != nullptr);
+    instance_ = new (std::nothrow) FileManager;
 
-    return true;
+    return instance_ != nullptr;
 }
 
-bool TableManager::shutdown()
+bool FileManager::shutdown()
 {
     CHECK_FAILURE(instance_ != nullptr);
 
     delete instance_;
+    instance_ = nullptr;
 
     return true;
 }
 
-TableManager& TableManager::get_instance()
+FileManager& FileManager::get_instnace()
 {
     return *instance_;
 }
 
-File& TableManager::get(table_id_t table_id)
+bool FileManager::open_table(Table& table)
 {
-    return tables_[table_id];
-}
-
-std::optional<table_id_t> TableManager::open_table(const std::string& filename)
-{
-    auto it = table_id_tbl_.find(filename);
-    if (it != end(table_id_tbl_))
-    {
-        return it->second;
-    }
-
-    CHECK_FAILURE2(table_id_tbl_.size() < MAX_TABLE_COUNT, std::nullopt);
-
-    const table_id_t table_id = table_id_t(table_id_tbl_.size() + 1);
+    auto it = files_.find(table.filename());
+    CHECK_FAILURE(it == end(files_));
 
     File file;
-    CHECK_FAILURE2(file.open(filename, table_id), std::nullopt);
+    CHECK_FAILURE(file.open(table.filename()));
 
-    table_id_tbl_.insert_or_assign(filename, table_id);
-    tables_.insert_or_assign(table_id, std::move(file));
-    return table_id;
-}
+    files_.insert_or_assign(table.filename(), std::move(file));
 
-bool TableManager::close_table(table_id_t table_id)
-{
-    auto it = tables_.find(table_id);
-
-    if (it == end(tables_))
-        return false;
-
-    it->second.close();
-    tables_.erase(it);
+    table.set_file(&files_[table.filename()]);
 
     return true;
 }
 
-bool TableManager::is_open(table_id_t table_id) const
+bool FileManager::close_table(Table& table)
 {
-    return tables_.find(table_id) != end(tables_);
+    auto it = files_.find(table.filename());
+    CHECK_FAILURE(it != end(files_));
+
+    table.set_file(nullptr);
+
+    it->second.close();
+    files_.erase(it);
+
+    return true;
 }

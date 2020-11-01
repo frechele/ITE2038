@@ -33,16 +33,6 @@ constexpr size_t HEADER_PAGE_RESERVED = PAGE_SIZE - HEADER_PAGE_USED;
 using table_id_t = int;
 using pagenum_t = uint64_t;
 
-using table_page_t = std::pair<table_id_t, pagenum_t>;
-constexpr table_id_t TABLE_ID(const table_page_t& tpid)
-{
-    return std::get<0>(tpid);
-}
-constexpr pagenum_t PAGENUM(const table_page_t& tpid)
-{
-    return std::get<1>(tpid);
-}
-
 constexpr pagenum_t NULL_PAGE_NUM = 0;
 
 struct page_data_t final
@@ -105,6 +95,7 @@ union page_t
     } node;
 };
 
+class Table;
 class Page;
 
 class File final
@@ -122,15 +113,17 @@ class File final
     File(File&& other);
     File& operator=(File&& other);
 
+    [[nodiscard]] const std::string& filename() const;
+
     [[nodiscard]] bool is_open() const;
 
-    [[nodiscard]] bool file_alloc_page(pagenum_t& pagenum);
-    [[nodiscard]] bool file_free_page(pagenum_t pagenum);
+    [[nodiscard]] bool file_alloc_page(Page& header, pagenum_t& pagenum);
+
     [[nodiscard]] bool file_read_page(pagenum_t pagenum, page_t* dest);
     [[nodiscard]] bool file_write_page(pagenum_t pagenum, const page_t* src);
 
  private:
-    [[nodiscard]] bool open(const std::string& filename, table_id_t table_id);
+    [[nodiscard]] bool open(const std::string& filename);
     void close();
 
     [[nodiscard]] bool extend(Page& header, uint64_t new_pages);
@@ -140,43 +133,32 @@ class File final
     [[nodiscard]] bool write(size_t size, size_t offset, const void* value);
 
  private:
-    table_id_t table_id_{ -1 };
+    std::string filename_;
     int file_handle_{ -1 };
 
-    friend class TableManager;
+    friend class FileManager;
 };
 
-class TableManager final
+class FileManager final
 {
- public:
-    static constexpr size_t MAX_TABLE_COUNT = 10;
-
- public:
+public:
     [[nodiscard]] static bool initialize();
     [[nodiscard]] static bool shutdown();
 
-    [[nodiscard]] static TableManager& get_instance();
+    [[nodiscard]] static FileManager& get_instnace();
 
-    File& get(table_id_t table_id);
+    [[nodiscard]] bool open_table(Table& table);
+    [[nodiscard]] bool close_table(Table& table);
 
-    [[nodiscard]] std::optional<table_id_t> open_table(
-        const std::string& filename);
-    [[nodiscard]] bool close_table(table_id_t table_id);
-    [[nodiscard]] bool is_open(table_id_t table_id) const;
+private:
+    std::unordered_map<std::string, File> files_;
 
- private:
-    TableManager() = default;
-
- private:
-    std::unordered_map<std::string, table_id_t> table_id_tbl_;
-    std::unordered_map<table_id_t, File> tables_;
-
-    inline static TableManager* instance_{ nullptr };
+    inline static FileManager* instance_{ nullptr };
 };
 
-inline TableManager& TblMgr()
+inline FileManager& FileMgr()
 {
-    return TableManager::get_instance();
+    return FileManager::get_instnace();
 }
 
 #endif  // FILE_H_

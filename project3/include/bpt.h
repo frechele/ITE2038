@@ -2,6 +2,7 @@
 #define BPT_H_
 
 #include "page.h"
+#include "table.h"
 
 #include <optional>
 #include <string>
@@ -19,52 +20,51 @@ class BPTree
     [[nodiscard]] static bool initialize(int num_buf);
     [[nodiscard]] static bool shutdown();
 
-    [[nodiscard]] static int open_table(const std::string& filename);
-    [[nodiscard]] static bool close_table(table_id_t table_id);
-    [[nodiscard]] static bool is_open(table_id_t table_id);
+    [[nodiscard]] static bool open_table(Table& table);
+    [[nodiscard]] static bool close_table(Table& table);
 
-    [[nodiscard]] static bool insert(table_id_t table_id,
+    [[nodiscard]] static bool insert(Table& table,
                                      const page_data_t& record);
-    [[nodiscard]] static bool remove(table_id_t table_id, int64_t key);
-    [[nodiscard]] static std::optional<page_data_t> find(table_id_t table_id,
+    [[nodiscard]] static bool remove(Table& table, int64_t key);
+    [[nodiscard]] static std::optional<page_data_t> find(Table& table,
                                                          int64_t key);
     [[nodiscard]] static std::vector<page_data_t> find_range(
-        table_id_t table_id, int64_t key_start, int64_t key_end);
+        Table& table, int64_t key_start, int64_t key_end);
 
-    [[nodiscard]] static std::string to_string(table_id_t table_id);
+    [[nodiscard]] static std::string to_string(Table& table);
 
  private:
-    [[nodiscard]] static table_page_t make_node(table_id_t table_id, bool is_leaf);
-    [[nodiscard]] static table_page_t find_leaf(table_id_t table_id, int64_t key);
-    [[nodiscard]] static int path_to_root(table_id_t table_id, pagenum_t child);
+    [[nodiscard]] static pagenum_t make_node(Table& table, bool is_leaf);
+    [[nodiscard]] static pagenum_t find_leaf(Table& table, int64_t key);
+    [[nodiscard]] static int path_to_root(Table& table, pagenum_t child);
 
     // insert operation helper methods
-    [[nodiscard]] static bool insert_into_leaf(table_id_t table_id, const table_page_t& leaf_tpid,
+    [[nodiscard]] static bool insert_into_leaf(Table& table, const pagenum_t& leaf,
                                                const page_data_t& record);
-    [[nodiscard]] static bool insert_into_parent(table_id_t table_id, const table_page_t& left_tpid,
-                                                 const table_page_t& right_tpid, int64_t key);
-    [[nodiscard]] static bool insert_into_new_root(table_id_t table_id, const table_page_t& left_tpid,
-                                                   const table_page_t& right_tpid, int64_t key);
-    [[nodiscard]] static bool insert_into_node(table_id_t table_id, const table_page_t& parent_tpid,
-                                               int left_index, const table_page_t& right_tpid,
+    [[nodiscard]] static bool insert_into_parent(Table& table, const pagenum_t& left,
+                                                 const pagenum_t& right, int64_t key);
+    [[nodiscard]] static bool insert_into_new_root(Table& table, const pagenum_t& left,
+                                                   const pagenum_t& right, int64_t key);
+    [[nodiscard]] static bool insert_into_node(Table& table, const pagenum_t& parent,
+                                               int left_index, const pagenum_t& right,
                                                int64_t key);
-    [[nodiscard]] static bool insert_into_leaf_after_splitting(table_id_t table_id, 
-        const table_page_t& leaf_tpid, const page_data_t& record);
-    [[nodiscard]] static bool insert_into_node_after_splitting(table_id_t table_id, 
-        const table_page_t& old_tpid, int left_index, const table_page_t& right_tpid, int64_t key);
+    [[nodiscard]] static bool insert_into_leaf_after_splitting(Table& table, 
+        const pagenum_t& leaf, const page_data_t& record);
+    [[nodiscard]] static bool insert_into_node_after_splitting(Table& table, 
+        const pagenum_t& old, int left_index, const pagenum_t& right, int64_t key);
 
     // delete operation helper methods
-    [[nodiscard]] static bool delete_entry(table_id_t table_id, const table_page_t& node_tpid,
+    [[nodiscard]] static bool delete_entry(Table& table, const pagenum_t& node,
                                            int64_t key);
     static void remove_branch_from_internal(Page& node,
                                             int64_t key);
     static void remove_record_from_leaf(Page& node, int64_t key);
-    [[nodiscard]] static bool adjust_root(table_id_t table_id, const table_page_t& root_tpid);
-    [[nodiscard]] static bool coalesce_nodes(table_id_t table_id, const table_page_t& parent_tpid,
-                                             const table_page_t& left_tpid, const table_page_t& right_tpid,
+    [[nodiscard]] static bool adjust_root(Table& table, const pagenum_t& root);
+    [[nodiscard]] static bool coalesce_nodes(Table& table, const pagenum_t& parent,
+                                             const pagenum_t& left, const pagenum_t& right,
                                              int64_t k_prime);
-    [[nodiscard]] static bool redistribute_nodes(table_id_t table_id, const table_page_t& parent_tpid,
-                                                 const table_page_t& left_tpid, const table_page_t& right_tpid,
+    [[nodiscard]] static bool redistribute_nodes(Table& table, const pagenum_t& parent,
+                                                 const pagenum_t& left, const pagenum_t& right,
                                                  int k_prime_index,
                                                  int64_t k_prime);
 };

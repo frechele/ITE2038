@@ -4,6 +4,7 @@
 #include "common.h"
 #include "file.h"
 #include "page.h"
+#include "table.h"
 
 #include <memory>
 #include <optional>
@@ -53,9 +54,13 @@ class BufferManager final
 
     [[nodiscard]] static BufferManager& get_instance();
 
-    [[nodiscard]] bool close_table(int table_id);
+    [[nodiscard]] bool open_table(Table& table);
+    [[nodiscard]] bool close_table(Table& table);
 
-    [[nodiscard]] bool get_page(table_id_t table_id, pagenum_t pagenum,
+    [[nodiscard]] bool create_page(Table& table, bool is_leaf, pagenum_t& pagenum);
+    [[nodiscard]] bool free_page(Table& table, pagenum_t pagenum);
+
+    [[nodiscard]] bool get_page(Table& table, pagenum_t pagenum,
                                 std::optional<Page>& page);
 
     bool check_all_unpinned() const;
@@ -89,22 +94,13 @@ inline BufferManager& BufMgr()
 }
 
 template <typename Function>
-[[nodiscard]] bool buffer(Function&& func, table_id_t table_id,
+[[nodiscard]] bool buffer(Function&& func, Table& table,
                           pagenum_t pagenum = NULL_PAGE_NUM)
 {
     std::optional<Page> opt;
     CHECK_FAILURE(
-        BufMgr().get_page(std::move(table_id), pagenum, opt));
+        BufMgr().get_page(table, pagenum, opt));
 
     return func(opt.value());
-}
-
-
-template <typename Function>
-[[nodiscard]] bool buffer(Function&& func, table_page_t tid_pid)
-{
-    auto [tid, pid] = tid_pid;
-
-    return buffer(func, tid, pid);
 }
 #endif  // BUFFER_H_

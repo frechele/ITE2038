@@ -172,7 +172,7 @@ int main()
     }
 
     {
-        const int delete_N = N;
+        const int delete_N = N / 10;
 
         std::vector<int> keys(delete_N);
         std::iota(begin(keys), end(keys), 1);

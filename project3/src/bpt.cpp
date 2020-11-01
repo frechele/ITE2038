@@ -34,9 +34,9 @@ int get_left_index(const Page& parent, pagenum_t left_num)
     return left_index + 1;
 }
 
-int get_neighbor_index(const Page& parent, const table_page_t& node_tpid)
+int get_neighbor_index(const Page& parent, const pagenum_t& node)
 {
-    const pagenum_t pagenum = PAGENUM(node_tpid);
+    const pagenum_t pagenum = node;
     const int num_keys = parent.header().num_keys;
     const auto branches = parent.branches();
     for (int i = -1; i < num_keys; ++i)
@@ -77,28 +77,20 @@ bool BPTree::shutdown()
     return BufferManager::shutdown();
 }
 
-int BPTree::open_table(const std::string& filename)
+bool BPTree::open_table(Table& table)
 {
-    if (auto opt = TblMgr().open_table(filename); opt.has_value())
-        return opt.value();
-
-    return -1;
+    return BufMgr().open_table(table);
 }
 
-bool BPTree::close_table(table_id_t table_id)
+bool BPTree::close_table(Table& table)
 {
-    return BufMgr().close_table(table_id);
+    return BufMgr().close_table(table);
 }
 
-bool BPTree::is_open(table_id_t table_id)
-{
-    return TblMgr().is_open(table_id);
-}
-
-bool BPTree::insert(table_id_t table_id, const page_data_t& record)
+bool BPTree::insert(Table& table, const page_data_t& record)
 {
     // case 1 : duplicated key
-    if (find(table_id, record.key))
+    if (find(table, record.key))
         return false;
 
     pagenum_t root_page_number;
@@ -108,23 +100,23 @@ bool BPTree::insert(table_id_t table_id, const page_data_t& record)
 
             return true;
         },
-        table_id));
+        table));
 
     // case 2 : tree does not exist
     if (root_page_number == NULL_PAGE_NUM)
     {
-        const auto new_node_tpid = make_node(table_id, true);
-        CHECK_FAILURE(PAGENUM(new_node_tpid) != NULL_PAGE_NUM);
+        const auto new_node = make_node(table, true);
+        CHECK_FAILURE(new_node != NULL_PAGE_NUM);
 
         CHECK_FAILURE(buffer(
             [&](Page& header) {
-                header.header_page().root_page_number = PAGENUM(new_node_tpid);
+                header.header_page().root_page_number = new_node;
 
                 header.mark_dirty();
 
                 return true;
             },
-            table_id));
+            table));
 
         return buffer(
             [&](Page& new_page) {
@@ -137,10 +129,10 @@ bool BPTree::insert(table_id_t table_id, const page_data_t& record)
 
                 return true;
             },
-            new_node_tpid);
+            table, new_node);
     }
 
-    const table_page_t leaf_tpid = find_leaf(table_id, record.key);
+    const pagenum_t leaf = find_leaf(table, record.key);
 
     int leaf_num_keys = 0;
     CHECK_FAILURE(buffer(
@@ -149,32 +141,32 @@ bool BPTree::insert(table_id_t table_id, const page_data_t& record)
 
             return true;
         },
-        leaf_tpid));
+        table, leaf));
 
     // case 3-1 : leaf has room for key
     if (leaf_num_keys < LEAF_ORDER - 1)
     {
-        return insert_into_leaf(table_id, leaf_tpid, record);
+        return insert_into_leaf(table, leaf, record);
     }
 
-    return insert_into_leaf_after_splitting(table_id, leaf_tpid, record);
+    return insert_into_leaf_after_splitting(table, leaf, record);
 }
 
-bool BPTree::remove(table_id_t table_id, int64_t key)
+bool BPTree::remove(Table& table, int64_t key)
 {
-    auto record = find(table_id, key);
+    auto record = find(table, key);
     CHECK_FAILURE(record);
 
-    table_page_t leaf_tpid = find_leaf(table_id, key);
-    CHECK_FAILURE(PAGENUM(leaf_tpid) != NULL_PAGE_NUM);
+    pagenum_t leaf = find_leaf(table, key);
+    CHECK_FAILURE(leaf != NULL_PAGE_NUM);
 
-    return delete_entry(table_id, leaf_tpid, key);
+    return delete_entry(table, leaf, key);
 }
 
-std::optional<page_data_t> BPTree::find(table_id_t table_id, int64_t key)
+std::optional<page_data_t> BPTree::find(Table& table, int64_t key)
 {
-    table_page_t tpid = find_leaf(table_id, key);
-    CHECK_FAILURE2(PAGENUM(tpid) != NULL_PAGE_NUM, std::nullopt);
+    pagenum_t pid = find_leaf(table, key);
+    CHECK_FAILURE2(pid != NULL_PAGE_NUM, std::nullopt);
 
     std::optional<page_data_t> result{ std::nullopt };
 
@@ -190,20 +182,21 @@ std::optional<page_data_t> BPTree::find(table_id_t table_id, int64_t key)
 
                            return true;
                        },
-                       tpid), std::nullopt);
+                       table, pid),
+                   std::nullopt);
 
     return result;
 }
 
-std::vector<page_data_t> BPTree::find_range(table_id_t table_id,
-                                            int64_t key_start, int64_t key_end)
+std::vector<page_data_t> BPTree::find_range(Table& table, int64_t key_start,
+                                            int64_t key_end)
 {
     std::vector<page_data_t> result;
 
     CHECK_FAILURE2(
         buffer(
             [&](Page& header) {
-                pagenum_t pagenum = std::get<1>(find_leaf(table_id, key_start));
+                pagenum_t pagenum = find_leaf(table, key_start);
                 CHECK_FAILURE(pagenum != NULL_PAGE_NUM);
 
                 int i = 0;
@@ -217,7 +210,7 @@ std::vector<page_data_t> BPTree::find_range(table_id_t table_id,
 
                         return (i != num_keys);
                     },
-                    table_id, pagenum));
+                    table, pagenum));
 
                 while (pagenum != NULL_PAGE_NUM)
                 {
@@ -234,18 +227,18 @@ std::vector<page_data_t> BPTree::find_range(table_id_t table_id,
 
                             return true;
                         },
-                        table_id, pagenum));
+                        table, pagenum));
                 }
 
                 return true;
             },
-            table_id),
+            table),
         {});
 
     return result;
 }
 
-std::string BPTree::to_string(table_id_t table_id)
+std::string BPTree::to_string(Table& table)
 {
     std::stringstream ss;
 
@@ -274,7 +267,7 @@ std::string BPTree::to_string(table_id_t table_id)
                                                 pagenum)  // leftmost
                                             {
                                                 const int new_rank =
-                                                    path_to_root(table_id,
+                                                    path_to_root(table,
                                                                  pagenum);
                                                 if (new_rank != rank)
                                                 {
@@ -285,7 +278,7 @@ std::string BPTree::to_string(table_id_t table_id)
 
                                             return true;
                                         },
-                                        table_id,
+                                        table,
                                         page.header().parent_page_number));
                                 }
 
@@ -313,41 +306,27 @@ std::string BPTree::to_string(table_id_t table_id)
 
                                 return true;
                             },
-                            table_id, pagenum));
+                            table, pagenum));
                     }
                 }
 
                 return true;
             },
-            table_id),
+            table),
         "");
 
     return ss.str();
 }
 
-table_page_t BPTree::make_node(table_id_t table_id, bool is_leaf)
+pagenum_t BPTree::make_node(Table& table, bool is_leaf)
 {
     pagenum_t pagenum;
-    CHECK_FAILURE2(TblMgr().get(table_id).file_alloc_page(pagenum),
-                   std::make_pair(table_id, NULL_PAGE_NUM));
+    CHECK_FAILURE2(BufMgr().create_page(table, is_leaf, pagenum), NULL_PAGE_NUM);
 
-    CHECK_FAILURE2(buffer(
-                       [&](Page& page) {
-                           page.clear();
-
-                           page.header().is_leaf = is_leaf;
-
-                           page.mark_dirty();
-
-                           return true;
-                       },
-                       table_id, pagenum),
-                   std::make_pair(table_id, NULL_PAGE_NUM));
-
-    return { table_id, pagenum };
+    return pagenum;
 }
 
-table_page_t BPTree::find_leaf(table_id_t table_id, int64_t key)
+pagenum_t BPTree::find_leaf(Table& table, int64_t key)
 {
     pagenum_t root_page_number;
     CHECK_FAILURE2(buffer(
@@ -357,11 +336,11 @@ table_page_t BPTree::find_leaf(table_id_t table_id, int64_t key)
 
                            return true;
                        },
-                       table_id),
-                   std::make_pair(table_id, NULL_PAGE_NUM));
+                       table),
+                   NULL_PAGE_NUM);
 
     if (root_page_number == NULL_PAGE_NUM)
-        return { table_id, NULL_PAGE_NUM };
+        return NULL_PAGE_NUM;
 
     pagenum_t current_num = root_page_number;
 
@@ -395,14 +374,14 @@ table_page_t BPTree::find_leaf(table_id_t table_id, int64_t key)
 
                     return true;
                 },
-                table_id, current_num),
-            std::make_pair(table_id, NULL_PAGE_NUM));
+                table, current_num),
+            NULL_PAGE_NUM);
     }
 
-    return { table_id, current_num };
+    return current_num;
 }
 
-int BPTree::path_to_root(table_id_t table_id, pagenum_t child_num)
+int BPTree::path_to_root(Table& table, pagenum_t child_num)
 {
     int length = 0;
 
@@ -413,7 +392,7 @@ int BPTree::path_to_root(table_id_t table_id, pagenum_t child_num)
 
             return true;
         },
-        table_id));
+        table));
 
     const pagenum_t root_page = root_page_number;
     while (child_num != root_page)
@@ -424,7 +403,7 @@ int BPTree::path_to_root(table_id_t table_id, pagenum_t child_num)
 
                                return true;
                            },
-                           table_id, child_num),
+                           table, child_num),
                        -1);
 
         ++length;
@@ -433,8 +412,7 @@ int BPTree::path_to_root(table_id_t table_id, pagenum_t child_num)
     return length;
 }
 
-bool BPTree::insert_into_leaf(table_id_t table_id,
-                              const table_page_t& leaf_tpid,
+bool BPTree::insert_into_leaf(Table& table, const pagenum_t& leaf,
                               const page_data_t& record)
 {
     return buffer(
@@ -458,27 +436,25 @@ bool BPTree::insert_into_leaf(table_id_t table_id,
 
             return true;
         },
-        leaf_tpid);
+        table, leaf);
 }
 
-bool BPTree::insert_into_parent(table_id_t table_id,
-                                const table_page_t& left_tpid,
-                                const table_page_t& right_tpid, int64_t key)
+bool BPTree::insert_into_parent(Table& table, const pagenum_t& left,
+                                const pagenum_t& right, int64_t key)
 {
-    table_page_t parent_tpid;
+    pagenum_t parent;
     CHECK_FAILURE(buffer(
         [&](Page& left) {
-            parent_tpid =
-                std::make_pair(table_id, left.header().parent_page_number);
+            parent = left.header().parent_page_number;
 
             return true;
         },
-        left_tpid));
+        table, left));
 
     // case 1 : new root
-    if (PAGENUM(parent_tpid) == NULL_PAGE_NUM)
+    if (parent == NULL_PAGE_NUM)
     {
-        return insert_into_new_root(table_id, left_tpid, right_tpid, key);
+        return insert_into_new_root(table, left, right, key);
     }
 
     // case 2 : leaf or node
@@ -486,80 +462,78 @@ bool BPTree::insert_into_parent(table_id_t table_id,
     CHECK_FAILURE(buffer(
         [&](Page& parent) {
             num_keys = parent.header().num_keys;
-            left_index = get_left_index(parent, PAGENUM(left_tpid));
+            left_index = get_left_index(parent, left);
 
             return true;
         },
-        parent_tpid));
+        table, parent));
 
     // case 2-1 : the new key fits into the node
     if (num_keys < INTERNAL_ORDER - 1)
     {
-        return insert_into_node(table_id, parent_tpid, left_index, right_tpid,
-                                key);
+        return insert_into_node(table, parent, left_index, right, key);
     }
 
     // case 2-2 : split a node in order to preserve the B+ tree
     // properties
-    return insert_into_node_after_splitting(table_id, parent_tpid, left_index,
-                                            right_tpid, key);
+    return insert_into_node_after_splitting(table, parent, left_index, right,
+                                            key);
 }
 
-bool BPTree::insert_into_new_root(table_id_t table_id,
-                                  const table_page_t& left_tpid,
-                                  const table_page_t& right_tpid, int64_t key)
+bool BPTree::insert_into_new_root(Table& table, const pagenum_t& left,
+                                  const pagenum_t& right, int64_t key)
 {
-    table_page_t new_root_tpid = make_node(table_id, false);
-    CHECK_FAILURE(PAGENUM(new_root_tpid) != NULL_PAGE_NUM);
+    pagenum_t new_root = make_node(table, false);
+    CHECK_FAILURE(new_root != NULL_PAGE_NUM);
 
     CHECK_FAILURE(buffer(
         [&](Page& new_root) {
             new_root.header().num_keys = 1;
-            new_root.header().page_a_number = PAGENUM(left_tpid);
+            new_root.header().page_a_number = left;
 
             new_root.branches()[0].key = key;
-            new_root.branches()[0].child_page_number = PAGENUM(right_tpid);
+            new_root.branches()[0].child_page_number = right;
 
             new_root.mark_dirty();
 
             return true;
         },
-        new_root_tpid));
+        table, new_root));
 
     CHECK_FAILURE(buffer(
         [&](Page& left) {
-            left.header().parent_page_number = PAGENUM(new_root_tpid);
+            left.header().parent_page_number = new_root;
 
             left.mark_dirty();
 
             return true;
         },
-        left_tpid));
+        table, left));
 
     CHECK_FAILURE(buffer(
         [&](Page& right) {
-            right.header().parent_page_number = PAGENUM(new_root_tpid);
+            right.header().parent_page_number = new_root;
 
             right.mark_dirty();
 
             return true;
         },
-        right_tpid));
+        table, right));
 
     return buffer(
         [&](Page& header) {
-            header.header_page().root_page_number = PAGENUM(new_root_tpid);
+            header.header_page().root_page_number = new_root;
 
             header.mark_dirty();
 
             return true;
         },
-        table_id);
+        table);
 }
 
-bool BPTree::insert_into_node(table_id_t table_id,
-                              const table_page_t& parent_tpid, int left_index,
-                              const table_page_t& right_tpid, int64_t key)
+bool BPTree::insert_into_node(Table& table, const pagenum_t& parent,
+                              int left_index, const pagenum_t& right,
+                              int64_t key)
 {
     return buffer(
         [&](Page& parent) {
@@ -570,7 +544,7 @@ bool BPTree::insert_into_node(table_id_t table_id,
             {
                 branches[i] = branches[i - 1];
             }
-            branches[left_index].child_page_number = PAGENUM(right_tpid);
+            branches[left_index].child_page_number = right;
             branches[left_index].key = key;
             ++parent.header().num_keys;
 
@@ -578,18 +552,18 @@ bool BPTree::insert_into_node(table_id_t table_id,
 
             return true;
         },
-        parent_tpid);
+        table, parent);
 }
 
-bool BPTree::insert_into_leaf_after_splitting(table_id_t table_id,
-                                              const table_page_t& leaf_tpid,
+bool BPTree::insert_into_leaf_after_splitting(Table& table,
+                                              const pagenum_t& leaf,
                                               const page_data_t& record)
 {
     std::array<page_data_t, LEAF_ORDER> temp_data;
     const int split_pivot = cut(LEAF_ORDER - 1);
 
-    const table_page_t new_leaf_tpid = make_node(table_id, true);
-    CHECK_FAILURE(PAGENUM(new_leaf_tpid) != NULL_PAGE_NUM);
+    const pagenum_t new_leaf = make_node(table, true);
+    CHECK_FAILURE(new_leaf != NULL_PAGE_NUM);
 
     pagenum_t parent_page_number, page_a_number;
     CHECK_FAILURE(buffer(
@@ -623,13 +597,13 @@ bool BPTree::insert_into_leaf_after_splitting(table_id_t table_id,
                 ++leaf.header().num_keys;
             }
 
-            leaf.header().page_a_number = PAGENUM(new_leaf_tpid);
+            leaf.header().page_a_number = new_leaf;
 
             leaf.mark_dirty();
 
             return true;
         },
-        leaf_tpid));
+        table, leaf));
 
     int64_t insert_key;
     CHECK_FAILURE(buffer(
@@ -652,22 +626,22 @@ bool BPTree::insert_into_leaf_after_splitting(table_id_t table_id,
 
             return true;
         },
-        new_leaf_tpid));
+        table, new_leaf));
 
-    return insert_into_parent(table_id, leaf_tpid, new_leaf_tpid, insert_key);
+    return insert_into_parent(table, leaf, new_leaf, insert_key);
 }
 
-bool BPTree::insert_into_node_after_splitting(table_id_t table_id,
-                                              const table_page_t& old_tpid,
+bool BPTree::insert_into_node_after_splitting(Table& table,
+                                              const pagenum_t& old,
                                               int left_index,
-                                              const table_page_t& right_tpid,
+                                              const pagenum_t& right,
                                               int64_t key)
 {
     std::array<page_branch_t, INTERNAL_ORDER> temp_data;
     const int split_pivot = cut(INTERNAL_ORDER);
 
-    const table_page_t new_page_tpid = make_node(table_id, false);
-    CHECK_FAILURE(PAGENUM(new_page_tpid) != NULL_PAGE_NUM);
+    const pagenum_t new_page = make_node(table, false);
+    CHECK_FAILURE(new_page != NULL_PAGE_NUM);
 
     pagenum_t parent_page_number;
     CHECK_FAILURE(buffer(
@@ -681,7 +655,7 @@ bool BPTree::insert_into_node_after_splitting(table_id_t table_id,
                 temp_data[j] = branches[i];
             }
             temp_data[left_index].key = key;
-            temp_data[left_index].child_page_number = PAGENUM(right_tpid);
+            temp_data[left_index].child_page_number = right;
 
             old.header().num_keys = 0;
             for (int i = 0; i < split_pivot - 1; ++i)
@@ -696,7 +670,7 @@ bool BPTree::insert_into_node_after_splitting(table_id_t table_id,
 
             return true;
         },
-        old_tpid));
+        table, old));
 
     int64_t k_prime;
     CHECK_FAILURE(buffer(
@@ -728,22 +702,21 @@ bool BPTree::insert_into_node_after_splitting(table_id_t table_id,
 
                         return true;
                     },
-                    table_id, j));
+                    table, j));
             }
 
             new_page.mark_dirty();
 
             return true;
         },
-        new_page_tpid));
+        table, new_page));
 
-    return insert_into_parent(table_id, old_tpid, new_page_tpid, k_prime);
+    return insert_into_parent(table, old, new_page, k_prime);
 }
 
-bool BPTree::delete_entry(table_id_t table_id, const table_page_t& node_tpid,
-                          int64_t key)
+bool BPTree::delete_entry(Table& table, const pagenum_t& node, int64_t key)
 {
-    table_page_t parent_tpid;
+    pagenum_t parent;
     int node_num_keys, is_leaf;
     CHECK_FAILURE(buffer(
         [&](Page& node) {
@@ -757,11 +730,11 @@ bool BPTree::delete_entry(table_id_t table_id, const table_page_t& node_tpid,
             node.mark_dirty();
 
             node_num_keys = node.header().num_keys;
-            parent_tpid = { table_id, node.header().parent_page_number };
+            parent = node.header().parent_page_number;
 
             return true;
         },
-        node_tpid));
+        table, node));
 
     pagenum_t root_page_number;
     CHECK_FAILURE(buffer(
@@ -770,37 +743,36 @@ bool BPTree::delete_entry(table_id_t table_id, const table_page_t& node_tpid,
 
             return true;
         },
-        table_id));
+        table));
 
-    if (root_page_number == PAGENUM(node_tpid))
-        return adjust_root(table_id, node_tpid);
+    if (root_page_number == node)
+        return adjust_root(table, node);
 
     if (node_num_keys > MERGE_THRESHOLD)
         return true;
 
     int neighbor_index, k_prime_index;
     int64_t k_prime;
-    table_page_t left_tpid;
+    pagenum_t left;
     CHECK_FAILURE(buffer(
         [&](Page& parent) {
-            neighbor_index = get_neighbor_index(parent, node_tpid);
+            neighbor_index = get_neighbor_index(parent, node);
             k_prime_index = (neighbor_index == -1) ? 0 : neighbor_index;
             k_prime = parent.branches()[k_prime_index].key;
 
-            left_tpid = { table_id,
-                          (neighbor_index == -1)
-                              ? parent.branches()[0].child_page_number
-                              : ((neighbor_index == 0)
-                                     ? parent.header().page_a_number
-                                     : parent.branches()[neighbor_index - 1]
-                                           .child_page_number) };
+            left = (neighbor_index == -1)
+                       ? parent.branches()[0].child_page_number
+                       : ((neighbor_index == 0)
+                              ? parent.header().page_a_number
+                              : parent.branches()[neighbor_index - 1]
+                                    .child_page_number);
 
             return true;
         },
-        parent_tpid));
+        table, parent));
 
-    const table_page_t* left_ptr = &left_tpid;
-    const table_page_t* right_ptr = &node_tpid;
+    const pagenum_t* left_ptr = &left;
+    const pagenum_t* right_ptr = &node;
 
     if (neighbor_index == -1)
     {
@@ -815,13 +787,12 @@ bool BPTree::delete_entry(table_id_t table_id, const table_page_t& node_tpid,
 
             return true;
         },
-        left_tpid));
+        table, left));
 
     if (left_num_keys + node_num_keys < capacity)
-        return coalesce_nodes(table_id, parent_tpid, *left_ptr, *right_ptr,
-                              k_prime);
+        return coalesce_nodes(table, parent, *left_ptr, *right_ptr, k_prime);
 
-    return redistribute_nodes(table_id, parent_tpid, *left_ptr, *right_ptr,
+    return redistribute_nodes(table, parent, *left_ptr, *right_ptr,
                               k_prime_index, k_prime);
 }
 
@@ -849,7 +820,7 @@ void BPTree::remove_record_from_leaf(Page& node, int64_t key)
     --node.header().num_keys;
 }
 
-bool BPTree::adjust_root(table_id_t table_id, const table_page_t& root_tpid)
+bool BPTree::adjust_root(Table& table, const pagenum_t& root)
 {
     int num_keys, is_leaf;
     pagenum_t page_a_number;
@@ -862,7 +833,7 @@ bool BPTree::adjust_root(table_id_t table_id, const table_page_t& root_tpid)
 
             return true;
         },
-        root_tpid));
+        table, root));
 
     if (num_keys > 0)
         return true;
@@ -884,7 +855,7 @@ bool BPTree::adjust_root(table_id_t table_id, const table_page_t& root_tpid)
 
                 return true;
             },
-            table_id, new_root_page_number));
+            table, new_root_page_number));
     }
 
     CHECK_FAILURE(buffer(
@@ -895,15 +866,14 @@ bool BPTree::adjust_root(table_id_t table_id, const table_page_t& root_tpid)
 
             return true;
         },
-        table_id));
+        table));
 
-    return TblMgr().get(table_id).file_free_page(PAGENUM(root_tpid));
+    return BufMgr().free_page(table, root);
 }
 
-bool BPTree::coalesce_nodes(table_id_t table_id,
-                            const table_page_t& parent_tpid,
-                            const table_page_t& left_tpid,
-                            const table_page_t& right_tpid, int64_t k_prime)
+bool BPTree::coalesce_nodes(Table& table, const pagenum_t& parent,
+                            const pagenum_t& left, const pagenum_t& right,
+                            int64_t k_prime)
 {
     CHECK_FAILURE(buffer(
         [&](Page& left) {
@@ -959,7 +929,7 @@ bool BPTree::coalesce_nodes(table_id_t table_id,
 
                                     return true;
                                 },
-                                table_id, left_branches[i].child_page_number));
+                                table, left_branches[i].child_page_number));
 
                             ++left.header().num_keys;
                             --right.header().num_keys;
@@ -970,19 +940,17 @@ bool BPTree::coalesce_nodes(table_id_t table_id,
 
                     return true;
                 },
-                right_tpid);
+                table, right);
         },
-        left_tpid));
+        table, left));
 
-    CHECK_FAILURE(delete_entry(table_id, parent_tpid, k_prime));
+    CHECK_FAILURE(delete_entry(table, parent, k_prime));
 
-    return TblMgr().get(table_id).file_free_page(PAGENUM(right_tpid));
+    return BufMgr().free_page(table, right);
 }
 
-bool BPTree::redistribute_nodes(table_id_t table_id,
-                                const table_page_t& parent_tpid,
-                                const table_page_t& left_tpid,
-                                const table_page_t& right_tpid,
+bool BPTree::redistribute_nodes(Table& table, const pagenum_t& parent,
+                                const pagenum_t& left, const pagenum_t& right,
                                 int k_prime_index, int64_t k_prime)
 {
     return buffer(
@@ -1028,7 +996,7 @@ bool BPTree::redistribute_nodes(table_id_t table_id,
 
                                             return true;
                                         },
-                                        table_id, moved_child_pagenum));
+                                        table, moved_child_pagenum));
 
                                     parent.branches()[k_prime_index].key =
                                         right_branches[0].key;
@@ -1080,7 +1048,7 @@ bool BPTree::redistribute_nodes(table_id_t table_id,
 
                                             return true;
                                         },
-                                        table_id, moved_child_pagenum));
+                                        table, moved_child_pagenum));
 
                                     parent.branches()[k_prime_index].key =
                                         left_branches[left_num_key - 1].key;
@@ -1100,9 +1068,9 @@ bool BPTree::redistribute_nodes(table_id_t table_id,
 
                             return true;
                         },
-                        right_tpid);
+                        table, right);
                 },
-                left_tpid);
+                table, left);
         },
-        parent_tpid);
+        table, parent);
 }

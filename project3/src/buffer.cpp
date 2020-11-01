@@ -50,7 +50,7 @@ bool BufferManager::initialize(int num_buf)
 
     CHECK_FAILURE(instance_->init_lru(num_buf));
 
-    return TableManager::initialize();
+    return FileManager::initialize();
 }
 
 bool BufferManager::shutdown()
@@ -58,8 +58,8 @@ bool BufferManager::shutdown()
     CHECK_FAILURE(instance_ != nullptr);
 
     CHECK_FAILURE(instance_->shutdown_lru());
-    
-    CHECK_FAILURE(TableManager::shutdown());
+
+    CHECK_FAILURE(FileManager::shutdown());
 
     delete instance_;
     instance_ = nullptr;
@@ -117,7 +117,7 @@ bool BufferManager::shutdown_lru()
             const table_id_t table_id = current->table_id_;
             const pagenum_t pagenum = current->pagenum_;
 
-            CHECK_FAILURE(TblMgr().get(table_id).file_write_page(
+            CHECK_FAILURE(TblMgr().get_table(table_id).value()->file()->file_write_page(
                 pagenum, current->frame_));
         }
 
@@ -131,9 +131,14 @@ bool BufferManager::shutdown_lru()
     return true;
 }
 
-bool BufferManager::close_table(int table_id)
+bool BufferManager::open_table(Table& table)
 {
-    auto& tbl_map = block_tbl_[table_id];
+    return FileMgr().open_table(table);
+}
+
+bool BufferManager::close_table(Table& table)
+{
+    auto& tbl_map = block_tbl_[table.id()];
 
     for (const auto& pr : tbl_map)
     {
@@ -143,17 +148,62 @@ bool BufferManager::close_table(int table_id)
         CHECK_FAILURE(eviction(pr.second));
     }
 
-    return TblMgr().close_table(table_id);
+    return FileMgr().close_table(table);
 }
 
-bool BufferManager::get_page(table_id_t table_id, pagenum_t pagenum,
+bool BufferManager::create_page(Table& table, bool is_leaf, pagenum_t& pagenum)
+{
+    pagenum = NULL_PAGE_NUM;
+
+    return buffer(
+        [&](Page& header) {
+            CHECK_FAILURE(table.file()->file_alloc_page(header, pagenum));
+
+            return buffer([&](Page& new_page) {
+                new_page.clear();
+
+                new_page.header().is_leaf = is_leaf;
+
+                new_page.mark_dirty();
+
+                return true;
+            }, table, pagenum);
+        },
+        table);
+}
+
+bool BufferManager::free_page(Table& table, pagenum_t pagenum)
+{
+    return buffer(
+        [&](Page& header) {
+            return buffer(
+                [&](Page& free_page) {
+                    free_page.free_header().next_free_page_number =
+                        header.header_page().free_page_number;
+
+                    header.header_page().free_page_number = pagenum;
+
+                    free_page.mark_dirty();
+                    header.mark_dirty();
+
+                    return true;
+                },
+                table, pagenum);
+        },
+        table);
+}
+
+bool BufferManager::get_page(Table& table, pagenum_t pagenum,
                              std::optional<Page>& page)
 {
+    table_id_t table_id = table.id();
+
     BufferBlock* current = head_;
 
     auto tblIt = block_tbl_.find(table_id);
     std::unordered_map<pagenum_t, BufferBlock*>::iterator it;
-    if (tblIt != end(block_tbl_) && (it = tblIt->second.find(pagenum)) != tblIt->second.end())
+    if (tblIt != end(block_tbl_) &&
+        (it = tblIt->second.find(pagenum)) != tblIt->second.end())
     {
         current = it->second;
         current->lock();
@@ -170,12 +220,13 @@ bool BufferManager::get_page(table_id_t table_id, pagenum_t pagenum,
         current->table_id_ = table_id;
         current->pagenum_ = pagenum;
 
-        CHECK_FAILURE(TblMgr().get(table_id).file_read_page(
+        CHECK_FAILURE(TblMgr().get_table(table_id).value()->file()->file_read_page(
             pagenum, current->frame_));
 
         if (tblIt == end(block_tbl_))
         {
-            block_tbl_.insert_or_assign(table_id, std::unordered_map<pagenum_t, BufferBlock*>());
+            block_tbl_.insert_or_assign(
+                table_id, std::unordered_map<pagenum_t, BufferBlock*>());
         }
         block_tbl_[table_id].insert_or_assign(pagenum, current);
     }
@@ -240,7 +291,8 @@ void BufferManager::unlink_and_enqueue(BufferBlock* block)
 BufferBlock* BufferManager::eviction()
 {
     BufferBlock* victim = head_;
-    while (victim->pin_count_ > 0) {
+    while (victim->pin_count_ > 0)
+    {
         victim = victim->next_;
         assert(victim != head_);
     }
@@ -257,9 +309,9 @@ BufferBlock* BufferManager::eviction(BufferBlock* block)
 
     if (block->is_dirty_)
     {
-        CHECK_FAILURE2(
-            TblMgr().get(table_id).file_write_page(pagenum, block->frame_),
-            nullptr);
+        CHECK_FAILURE2(TblMgr().get_table(table_id).value()->file()->file_write_page(
+                           pagenum, block->frame_),
+                       nullptr);
     }
 
     block->clear();
