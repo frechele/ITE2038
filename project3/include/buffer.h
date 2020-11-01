@@ -77,6 +77,8 @@ class BufferManager final
     [[nodiscard]] BufferBlock* eviction();
     [[nodiscard]] BufferBlock* eviction(BufferBlock* block);
 
+    [[nodiscard]] bool clear_block(BufferBlock* block);
+
  private:
     BufferBlock* head_{ nullptr };
     BufferBlock* tail_{ nullptr };

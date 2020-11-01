@@ -92,8 +92,6 @@ bool BufferManager::init_lru(int num_buf)
         enqueue(block);
     }
 
-    block_tbl_.reserve(num_buf);
-
     return true;
 }
 
@@ -112,14 +110,7 @@ bool BufferManager::shutdown_lru()
         while (current->pin_count_ > 0)
             ;
 
-        if (current->is_dirty_)
-        {
-            const table_id_t table_id = current->table_id_;
-            const pagenum_t pagenum = current->pagenum_;
-
-            CHECK_FAILURE(TblMgr().get_table(table_id).value()->file()->file_write_page(
-                pagenum, current->frame_));
-        }
+        clear_block(current);
 
         tmp = current->next_;
         delete current;
@@ -145,8 +136,10 @@ bool BufferManager::close_table(Table& table)
         while (pr.second->pin_count_ > 0)
             ;
 
-        CHECK_FAILURE(eviction(pr.second));
+        clear_block(pr.second);
     }
+
+    tbl_map.clear();
 
     return FileMgr().close_table(table);
 }
@@ -159,15 +152,17 @@ bool BufferManager::create_page(Table& table, bool is_leaf, pagenum_t& pagenum)
         [&](Page& header) {
             CHECK_FAILURE(table.file()->file_alloc_page(header, pagenum));
 
-            return buffer([&](Page& new_page) {
-                new_page.clear();
+            return buffer(
+                [&](Page& new_page) {
+                    new_page.clear();
 
-                new_page.header().is_leaf = is_leaf;
+                    new_page.header().is_leaf = is_leaf;
 
-                new_page.mark_dirty();
+                    new_page.mark_dirty();
 
-                return true;
-            }, table, pagenum);
+                    return true;
+                },
+                table, pagenum);
         },
         table);
 }
@@ -220,8 +215,9 @@ bool BufferManager::get_page(Table& table, pagenum_t pagenum,
         current->table_id_ = table_id;
         current->pagenum_ = pagenum;
 
-        CHECK_FAILURE(TblMgr().get_table(table_id).value()->file()->file_read_page(
-            pagenum, current->frame_));
+        CHECK_FAILURE(
+            TblMgr().get_table(table_id).value()->file()->file_read_page(
+                pagenum, current->frame_));
 
         if (tblIt == end(block_tbl_))
         {
@@ -307,17 +303,27 @@ BufferBlock* BufferManager::eviction(BufferBlock* block)
     const table_id_t table_id = block->table_id();
     const pagenum_t pagenum = block->pagenum();
 
-    if (block->is_dirty_)
-    {
-        CHECK_FAILURE2(TblMgr().get_table(table_id).value()->file()->file_write_page(
-                           pagenum, block->frame_),
-                       nullptr);
-    }
-
-    block->clear();
+    clear_block(block);
     block_tbl_[table_id].erase(pagenum);
 
     return block;
+}
+
+bool BufferManager::clear_block(BufferBlock* block)
+{
+    const table_id_t table_id = block->table_id();
+    const pagenum_t pagenum = block->pagenum();
+
+    if (block->is_dirty_)
+    {
+        CHECK_FAILURE(
+            TblMgr().get_table(table_id).value()->file()->file_write_page(
+                pagenum, block->frame_));
+    }
+
+    block->clear();
+
+    return true;
 }
 
 bool BufferManager::check_all_unpinned() const
