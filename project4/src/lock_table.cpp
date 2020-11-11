@@ -36,29 +36,15 @@ struct hash<table_record_t>
 class HashTableEntry final
 {
 public:
-	HashTableEntry(table_record_t trid);
-
-	const table_record_t& table_record_id() const;
-
 	[[nodiscard]] lock_t* acquire();
 	void release(lock_t* lock_obj);
 
 private:
-	table_record_t trid_;
 	std::mutex mutex_;
 
 	lock_t* head_{ nullptr };
 	lock_t* tail_{ nullptr };
 };
-
-HashTableEntry::HashTableEntry(table_record_t trid) : trid_(std::move(trid))
-{
-}
-
-const table_record_t& HashTableEntry::table_record_id() const
-{
-	return trid_;
-}
 
 lock_t* HashTableEntry::acquire()
 {
@@ -179,7 +165,7 @@ lock_t* LockTableManager::acquire(int table_id, int64_t key)
 		auto it = locks_.find(trid);
 		if (it == end(locks_))
 		{
-			entry = new (std::nothrow) HashTableEntry(trid);
+			entry = new (std::nothrow) HashTableEntry;
 			CHECK_FAILURE2(entry != nullptr, nullptr);
 
 			locks_[trid] = entry;
@@ -201,14 +187,6 @@ bool LockTableManager::release(lock_t* lock_obj)
 
 	HashTableEntry* entry = lock_obj->entry;
 	entry->release(lock_obj);
-
-	// if (!entry->release(lock_obj))
-	// {
-	// 	auto it = locks_.find(entry->table_record_id());
-	// 	locks_.erase(it);
-
-	// 	delete entry;
-	// }
 
 	return true;
 }
