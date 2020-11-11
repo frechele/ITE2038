@@ -1,31 +1,229 @@
 #include <lock_table.h>
 
+#include <atomic>
+#include <cassert>
+#include <condition_variable>
+#include <mutex>
+#include <tuple>
+#include <unordered_map>
+
+class HashTableEntry;
+
 struct lock_t {
-	/* NO PAIN, NO GAIN. */
+	std::condition_variable cond;
+
+	HashTableEntry* entry{ nullptr };
+	lock_t* prev{ nullptr };
+	lock_t* next{ nullptr };
 };
 
-typedef struct lock_t lock_t;
+using table_record_t = std::tuple<int, int64_t>;
 
-int
-init_lock_table()
+namespace std
 {
-	/* DO IMPLEMENT YOUR ART !!!!! */
+template <>
+struct hash<table_record_t>
+{
+	size_t operator()(const table_record_t& key) const
+	{
+		auto [tid, pid] = key;
 
-	return 0;
+		return static_cast<size_t>(tid) << 32 | pid;
+	}
+};
 }
 
-lock_t*
-lock_acquire(int table_id, int64_t key)
+class HashTableEntry final
 {
-	/* ENJOY CODING !!!! */
+public:
+	HashTableEntry(table_record_t trid);
 
-	return nullptr;
+	const table_record_t& table_record_id() const;
+
+	[[nodiscard]] lock_t* acquire();
+	void release(lock_t* lock_obj);
+
+private:
+	table_record_t trid_;
+	std::mutex mutex_;
+
+	lock_t* head_{ nullptr };
+	lock_t* tail_{ nullptr };
+};
+
+HashTableEntry::HashTableEntry(table_record_t trid) : trid_(std::move(trid))
+{
 }
 
-int
-lock_release(lock_t* lock_obj)
+const table_record_t& HashTableEntry::table_record_id() const
 {
-	/* GOOD LUCK !!! */
+	return trid_;
+}
 
-	return 0;
+lock_t* HashTableEntry::acquire()
+{
+	std::unique_lock lock(mutex_);
+
+	lock_t* lock_obj = new (std::nothrow) lock_t;
+	CHECK_FAILURE2(lock_obj != nullptr, nullptr);
+
+	lock_obj->entry = this;
+
+	if (tail_ == nullptr)
+	{
+		// there is no any lock object
+		
+		head_ = lock_obj;
+		tail_ = lock_obj;
+	}
+	else
+	{
+		tail_->next = lock_obj;	
+		lock_obj->prev = tail_;
+
+		tail_ = lock_obj;
+
+		lock_obj->cond.wait(lock);
+	}
+	
+	return lock_obj;
+}
+
+void HashTableEntry::release(lock_t* lock_obj)
+{
+	std::scoped_lock lock(mutex_);
+
+	if (tail_ == lock_obj)
+	{
+		tail_ = lock_obj->prev;
+	}
+	if (head_ == lock_obj)
+	{
+		head_ = lock_obj->next;
+	}
+
+	if (lock_obj->prev != nullptr)
+	{
+		lock_obj->prev->next = lock_obj->next;
+	}
+	if (lock_obj->next != nullptr)
+	{
+		lock_obj->next->prev = lock_obj->prev;
+	}
+
+	delete lock_obj;
+
+	if (head_ != nullptr)
+		head_->cond.notify_all();
+}
+
+class LockTableManager final
+{
+public:
+	[[nodiscard]] static bool initialize();
+	[[nodiscard]] static bool shutdown();
+
+	[[nodiscard]] static LockTableManager& get_instance();
+
+	[[nodiscard]] lock_t* acquire(int table_id, int64_t key);
+	[[nodiscard]] bool release(lock_t* lock_obj);
+
+private:
+	inline static LockTableManager* instance_{ nullptr };
+
+	std::mutex table_latch_;
+	std::unordered_map<table_record_t, HashTableEntry*> locks_;
+};
+
+inline LockTableManager& LockTblMgr()
+{
+	return LockTableManager::get_instance();
+}
+
+bool LockTableManager::initialize()
+{
+	CHECK_FAILURE(instance_ == nullptr);
+
+	instance_ = new (std::nothrow) LockTableManager();
+	CHECK_FAILURE(instance_ != nullptr);
+
+	return true;
+}
+
+bool LockTableManager::shutdown()
+{
+	CHECK_FAILURE(instance_ != nullptr);
+
+	delete instance_;
+	instance_ = nullptr;
+
+	return true;
+}
+
+LockTableManager& LockTableManager::get_instance()
+{
+	assert(instance_ != nullptr);
+
+	return *instance_;
+}
+
+lock_t* LockTableManager::acquire(int table_id, int64_t key)
+{
+	table_record_t trid{ table_id, key };
+
+	HashTableEntry* entry;
+
+	{
+		std::scoped_lock lock(table_latch_);
+
+		auto it = locks_.find(trid);
+		if (it == end(locks_))
+		{
+			entry = new (std::nothrow) HashTableEntry(trid);
+			CHECK_FAILURE2(entry != nullptr, nullptr);
+
+			locks_[trid] = entry;
+		}
+		else
+		{
+			entry = it->second;
+		}
+	}
+
+	return entry->acquire();
+}
+
+bool LockTableManager::release(lock_t* lock_obj)
+{
+	CHECK_FAILURE(lock_obj != nullptr);
+
+	std::scoped_lock lock(table_latch_);
+
+	HashTableEntry* entry = lock_obj->entry;
+	entry->release(lock_obj);
+
+	// if (!entry->release(lock_obj))
+	// {
+	// 	auto it = locks_.find(entry->table_record_id());
+	// 	locks_.erase(it);
+
+	// 	delete entry;
+	// }
+
+	return true;
+}
+
+int init_lock_table()
+{
+	return LockTableManager::initialize() ? 0 : -1;
+}
+
+lock_t* lock_acquire(int table_id, int64_t key)
+{
+	return LockTblMgr().acquire(table_id, key);
+}
+
+int lock_release(lock_t* lock_obj)
+{
+	return LockTblMgr().release(lock_obj) ? 0 : -1;
 }

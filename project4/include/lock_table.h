@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 
+#define CHECK_FAILURE(cond) if (!(cond)) { return false; }
+#define CHECK_FAILURE2(cond, ret_val) if (!(cond)) { return (ret_val); }
+
 typedef struct lock_t lock_t;
 
 /* APIs for lock table */
