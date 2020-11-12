@@ -12,6 +12,7 @@ class HashTableEntry;
 
 struct lock_t {
 	bool wait{ false };
+	std::condition_variable cond;
 
 	HashTableEntry* entry{ nullptr };
 	lock_t* prev{ nullptr };
@@ -49,7 +50,6 @@ private:
 	table_record_t trid_;
 
 	std::mutex mutex_;
-	std::condition_variable cond_;
 
 	lock_t* head_{ nullptr };
 	lock_t* tail_{ nullptr };
@@ -98,7 +98,8 @@ void HashTableEntry::wait(lock_t* lock_obj)
 {
 	std::unique_lock lock(mutex_);
 
-	cond_.wait(lock, [lock_obj]{ return !lock_obj->wait; });
+	if (lock_obj->wait)
+		lock_obj->cond.wait(lock);
 }
 
 bool HashTableEntry::release(lock_t* lock_obj)
@@ -129,7 +130,7 @@ bool HashTableEntry::release(lock_t* lock_obj)
 		return false;
 
 	head_->wait = false;
-	cond_.notify_all();
+	head_->cond.notify_all();
 
 	return true;
 }
