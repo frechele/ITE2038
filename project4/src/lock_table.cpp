@@ -43,13 +43,11 @@ public:
 	const table_record_t& table_record_id() const;
 
 	[[nodiscard]] lock_t* update_link();
-	void wait(lock_t* lock_obj);
+	void wait(std::unique_lock<std::mutex>& lock, lock_t* lock_obj);
 	[[nodiscard]] bool release(lock_t* lock_obj);
 
 private:
 	table_record_t trid_;
-
-	std::mutex mutex_;
 
 	lock_t* head_{ nullptr };
 	lock_t* tail_{ nullptr };
@@ -67,8 +65,6 @@ const table_record_t& HashTableEntry::table_record_id() const
 
 lock_t* HashTableEntry::update_link()
 {
-	std::scoped_lock lock(mutex_);
-
 	lock_t* lock_obj = new (std::nothrow) lock_t;
 	CHECK_FAILURE2(lock_obj != nullptr, nullptr);
 
@@ -94,18 +90,14 @@ lock_t* HashTableEntry::update_link()
 	return lock_obj;
 }
 
-void HashTableEntry::wait(lock_t* lock_obj)
+void HashTableEntry::wait(std::unique_lock<std::mutex>& lock, lock_t* lock_obj)
 {
-	std::unique_lock lock(mutex_);
-
 	if (lock_obj->wait)
 		lock_obj->cond.wait(lock);
 }
 
 bool HashTableEntry::release(lock_t* lock_obj)
-{
-	std::scoped_lock lock(mutex_);
-
+{\
 	if (tail_ == lock_obj)
 	{
 		tail_ = lock_obj->prev;
@@ -195,29 +187,26 @@ lock_t* LockTableManager::acquire(int table_id, int64_t key)
 	lock_t* lock_obj;
 	HashTableEntry* entry;
 
+	std::unique_lock lock(table_latch_);
+
+	table_record_t trid{ table_id, key };
+
+	auto it = locks_.find(trid);
+	if (it == end(locks_))
 	{
-		std::scoped_lock lock(table_latch_);
+		entry = new (std::nothrow) HashTableEntry(trid);
+		CHECK_FAILURE2(entry != nullptr, nullptr);
 
-		table_record_t trid{ table_id, key };
-
-		auto it = locks_.find(trid);
-		if (it == end(locks_))
-		{
-			entry = new (std::nothrow) HashTableEntry(trid);
-			CHECK_FAILURE2(entry != nullptr, nullptr);
-
-			locks_[trid] = entry;
-		}
-		else
-		{
-			entry = it->second;
-		}
-
-		lock_obj = entry->update_link();
+		locks_[trid] = entry;
+	}
+	else
+	{
+		entry = it->second;
 	}
 
-	if (lock_obj != nullptr)
-		entry->wait(lock_obj);
+	lock_obj = entry->update_link();
+
+	entry->wait(lock, lock_obj);
 
 	return lock_obj;
 }
