@@ -12,7 +12,6 @@ class HashTableEntry;
 
 struct lock_t {
 	bool wait{ false };
-	std::condition_variable* cond{ nullptr };
 
 	HashTableEntry* entry{ nullptr };
 	lock_t* prev{ nullptr };
@@ -73,7 +72,6 @@ lock_t* HashTableEntry::update_link()
 	lock_t* lock_obj = new (std::nothrow) lock_t;
 	CHECK_FAILURE2(lock_obj != nullptr, nullptr);
 
-	lock_obj->cond = &cond_;
 	lock_obj->entry = this;
 
 	if (tail_ == nullptr)
@@ -100,7 +98,7 @@ void HashTableEntry::wait(lock_t* lock_obj)
 {
 	std::unique_lock lock(mutex_);
 
-	lock_obj->cond->wait(lock, [lock_obj]{ return !lock_obj->wait; });
+	cond_.wait(lock, [lock_obj]{ return !lock_obj->wait; });
 }
 
 void HashTableEntry::release(lock_t* lock_obj)
