@@ -43,7 +43,7 @@ public:
 
 	[[nodiscard]] lock_t* update_link();
 	void wait(lock_t* lock_obj);
-	void release(lock_t* lock_obj);
+	[[nodiscard]] bool release(lock_t* lock_obj);
 
 private:
 	table_record_t trid_;
@@ -101,7 +101,7 @@ void HashTableEntry::wait(lock_t* lock_obj)
 	cond_.wait(lock, [lock_obj]{ return !lock_obj->wait; });
 }
 
-void HashTableEntry::release(lock_t* lock_obj)
+bool HashTableEntry::release(lock_t* lock_obj)
 {
 	std::scoped_lock lock(mutex_);
 
@@ -126,10 +126,12 @@ void HashTableEntry::release(lock_t* lock_obj)
 	delete lock_obj;
 
 	if (head_ == nullptr)
-		return;
+		return false;
 
 	head_->wait = false;
 	cond_.notify_all();
+
+	return true;
 }
 
 class LockTableManager final
@@ -224,10 +226,15 @@ bool LockTableManager::release(lock_t* lock_obj)
 	CHECK_FAILURE(lock_obj != nullptr);
 
 	std::scoped_lock lock(table_latch_);
-
 	HashTableEntry* entry = lock_obj->entry;
 	
-	entry->release(lock_obj);
+	if (!entry->release(lock_obj))
+	{
+		auto it = locks_.find(entry->table_record_id());
+
+		delete it->second;
+		locks_.erase(it);
+	}
 
 	return true;
 }
