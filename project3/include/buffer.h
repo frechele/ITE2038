@@ -8,6 +8,7 @@
 
 #include <memory>
 #include <optional>
+#include <type_traits>
 #include <unordered_map>
 
 class BufferBlock final
@@ -57,7 +58,8 @@ class BufferManager final
     [[nodiscard]] bool open_table(Table& table);
     [[nodiscard]] bool close_table(Table& table);
 
-    [[nodiscard]] bool create_page(Table& table, bool is_leaf, pagenum_t& pagenum);
+    [[nodiscard]] bool create_page(Table& table, bool is_leaf,
+                                   pagenum_t& pagenum);
     [[nodiscard]] bool free_page(Table& table, pagenum_t pagenum);
 
     [[nodiscard]] bool get_page(Table& table, pagenum_t pagenum,
@@ -85,14 +87,15 @@ class BufferManager final
 
     page_t* page_arr_{ nullptr };
 
-    std::unordered_map<table_id_t, std::unordered_map<pagenum_t, BufferBlock*>> block_tbl_;
+    std::unordered_map<table_id_t, std::unordered_map<pagenum_t, BufferBlock*>>
+        block_tbl_;
 
     inline static BufferManager* instance_{ nullptr };
 };
 
 inline BufferManager& BufMgr()
 {
-   return BufferManager::get_instance();
+    return BufferManager::get_instance();
 }
 
 template <typename Function>
@@ -100,9 +103,16 @@ template <typename Function>
                           pagenum_t pagenum = NULL_PAGE_NUM)
 {
     std::optional<Page> opt;
-    CHECK_FAILURE(
-        BufMgr().get_page(table, pagenum, opt));
+    CHECK_FAILURE(BufMgr().get_page(table, pagenum, opt));
 
-    return func(opt.value());
+    if constexpr (std::is_void<decltype(func(opt.value()))>::value)
+    {
+        func(opt.value());
+        return true;
+    }
+    else
+    {
+        return func(opt.value());
+    }
 }
 #endif  // BUFFER_H_
