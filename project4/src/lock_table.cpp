@@ -97,7 +97,7 @@ void HashTableEntry::wait(std::unique_lock<std::mutex>& lock, lock_t* lock_obj)
 }
 
 bool HashTableEntry::release(lock_t* lock_obj)
-{\
+{
 	if (tail_ == lock_obj)
 	{
 		tail_ = lock_obj->prev;
