@@ -7,23 +7,20 @@
 
 #include <iostream>
 
-void BufferBlock::lock() const
+void BufferBlock::lock()
 {
-    mutex_.lock();
+    ++pin_count_;
 }
 
-bool BufferBlock::try_lock() const
+void BufferBlock::unlock()
 {
-    return mutex_.try_lock();
-}
-
-void BufferBlock::unlock() const
-{
-    mutex_.unlock();
+    assert(pin_count() > 0);
+    --pin_count_;
 }
 
 page_t& BufferBlock::frame()
 {
+    assert(pin_count() > 0);
     return *frame_;
 }
 
@@ -40,6 +37,12 @@ void BufferBlock::clear()
     pagenum_ = NULL_PAGE_NUM;
 
     is_dirty_ = false;
+    pin_count_ = 0;
+}
+
+int BufferBlock::pin_count() const
+{
+    return pin_count_.load();
 }
 
 bool BufferManager::initialize(int num_buf)
@@ -108,6 +111,9 @@ bool BufferManager::shutdown_lru()
     BufferBlock* current = head_;
     do
     {
+        while (current->pin_count() > 0)
+            ;
+
         CHECK_FAILURE(clear_block(current));
 
         tmp = current->next_;
@@ -131,6 +137,9 @@ bool BufferManager::close_table(Table& table)
 
     for (const auto& pr : tbl_map)
     {
+        while (pr.second->pin_count() > 0)
+            ;
+
         CHECK_FAILURE(clear_block(pr.second));
     }
 
@@ -282,7 +291,7 @@ void BufferManager::unlink_and_enqueue(BufferBlock* block)
 BufferBlock* BufferManager::eviction()
 {
     BufferBlock* victim = head_;
-    while (victim->try_lock())
+    while (victim->pin_count() > 0)
     {
         victim = victim->next_;
         assert(victim != head_);

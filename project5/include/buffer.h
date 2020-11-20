@@ -6,6 +6,7 @@
 #include "page.h"
 #include "table.h"
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -15,9 +16,8 @@
 class BufferBlock final
 {
  public:
-    void lock() const;
-    [[nodiscard]] bool try_lock() const;
-    void unlock() const;
+    void lock();
+    void unlock();
 
     [[nodiscard]] page_t& frame();
 
@@ -34,15 +34,15 @@ class BufferBlock final
 
  private:
     void clear();
+    int pin_count() const;
 
  private:
-    mutable std::mutex mutex_;
-
     page_t* frame_;
     table_id_t table_id_{ -1 };
     pagenum_t pagenum_{ NULL_PAGE_NUM };
 
     bool is_dirty_{ false };
+    std::atomic<int> pin_count_{ 0 };
 
     BufferBlock* prev_{ nullptr };
     BufferBlock* next_{ nullptr };
