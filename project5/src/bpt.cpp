@@ -145,7 +145,7 @@ bool BPTree::insert(Table& table, const page_data_t& record)
 bool BPTree::remove(Table& table, int64_t key)
 {
     auto record = find(table, key);
-    CHECK_FAILURE(record);
+    CHECK_FAILURE(record.has_value());
 
     pagenum_t leaf = find_leaf(table, key);
     CHECK_FAILURE(leaf != NULL_PAGE_NUM);
@@ -260,6 +260,7 @@ pagenum_t BPTree::find_leaf(Table& table, int64_t key)
                     if (current.header().is_leaf)
                     {
                         run = false;
+                        return;
                     }
 
                     const auto branches = current.branches();
