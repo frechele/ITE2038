@@ -154,12 +154,6 @@ int main()
 
         for (int i = 0; i < N; ++i) {
             assert(db_insert(tid, keys[i], &values[i][0]) == SUCCESS);
-
-            if (!BufMgr().check_all_unpinned())
-            {
-                BufMgr().dump_frame_stat();
-                abort();
-            }
         }
 
         const auto end_point = std::chrono::system_clock::now();
@@ -183,12 +177,6 @@ int main()
         for (int i = 0; i < delete_N; ++i)
         {
             assert(db_delete(tid, keys[i]) == SUCCESS);
-
-            if (!BufMgr().check_all_unpinned())
-            {
-                BufMgr().dump_frame_stat();
-                abort();
-            }
         }
 
         const auto end_point = std::chrono::system_clock::now();

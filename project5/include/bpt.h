@@ -31,8 +31,6 @@ class BPTree
                                                              int64_t key_start,
                                                              int64_t key_end);
 
-    [[nodiscard]] static std::string to_string(Table& table);
-
  private:
     [[nodiscard]] static pagenum_t make_node(Table& table, bool is_leaf);
     [[nodiscard]] static pagenum_t find_leaf(Table& table, int64_t key);

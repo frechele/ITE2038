@@ -7,20 +7,23 @@
 
 #include <iostream>
 
-void BufferBlock::lock()
+void BufferBlock::lock() const
 {
-    ++pin_count_;
+    mutex_.lock();
 }
 
-void BufferBlock::unlock()
+bool BufferBlock::try_lock() const
 {
-    assert(pin_count_ > 0);
-    --pin_count_;
+    return mutex_.try_lock();
+}
+
+void BufferBlock::unlock() const
+{
+    mutex_.unlock();
 }
 
 page_t& BufferBlock::frame()
 {
-    assert(pin_count_ > 0);
     return *frame_;
 }
 
@@ -37,7 +40,6 @@ void BufferBlock::clear()
     pagenum_ = NULL_PAGE_NUM;
 
     is_dirty_ = false;
-    pin_count_ = 0;
 }
 
 bool BufferManager::initialize(int num_buf)
@@ -106,9 +108,6 @@ bool BufferManager::shutdown_lru()
     BufferBlock* current = head_;
     do
     {
-        while (current->pin_count_ > 0)
-            ;
-
         CHECK_FAILURE(clear_block(current));
 
         tmp = current->next_;
@@ -132,9 +131,6 @@ bool BufferManager::close_table(Table& table)
 
     for (const auto& pr : tbl_map)
     {
-        while (pr.second->pin_count_ > 0)
-            ;
-
         CHECK_FAILURE(clear_block(pr.second));
     }
 
@@ -286,7 +282,7 @@ void BufferManager::unlink_and_enqueue(BufferBlock* block)
 BufferBlock* BufferManager::eviction()
 {
     BufferBlock* victim = head_;
-    while (victim->pin_count_ > 0)
+    while (victim->try_lock())
     {
         victim = victim->next_;
         assert(victim != head_);
@@ -323,33 +319,4 @@ bool BufferManager::clear_block(BufferBlock* block)
     block->clear();
 
     return true;
-}
-
-bool BufferManager::check_all_unpinned() const
-{
-    BufferBlock* current = head_;
-
-    do
-    {
-        if (current->pin_count_ > 0)
-            return false;
-    } while (current != head_);
-
-    return true;
-}
-
-void BufferManager::dump_frame_stat() const
-{
-    BufferBlock* current = head_;
-
-    int id = 0;
-    do
-    {
-        std::cerr << "id: " << id << " tid: " << current->table_id_
-                  << " pid: " << current->pagenum_
-                  << " pin: " << current->pin_count_ << '\n';
-
-        ++id;
-        current = current->next_;
-    } while (current != head_);
 }

@@ -20,8 +20,6 @@ class Table final
     [[nodiscard]] std::vector<page_data_t> find_range(int64_t key_start,
                                                       int64_t key_end);
 
-    [[nodiscard]] std::string to_string();
-
     void set_file(File* file);
     File* file();
 

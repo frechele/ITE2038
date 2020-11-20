@@ -7,6 +7,7 @@
 #include "table.h"
 
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <type_traits>
 #include <unordered_map>
@@ -14,8 +15,9 @@
 class BufferBlock final
 {
  public:
-    void lock();
-    void unlock();
+    void lock() const;
+    [[nodiscard]] bool try_lock() const;
+    void unlock() const;
 
     [[nodiscard]] page_t& frame();
 
@@ -34,12 +36,13 @@ class BufferBlock final
     void clear();
 
  private:
+    mutable std::mutex mutex_;
+
     page_t* frame_;
     table_id_t table_id_{ -1 };
     pagenum_t pagenum_{ NULL_PAGE_NUM };
 
     bool is_dirty_{ false };
-    int pin_count_{ 0 };
 
     BufferBlock* prev_{ nullptr };
     BufferBlock* next_{ nullptr };
@@ -65,9 +68,6 @@ class BufferManager final
     [[nodiscard]] bool get_page(Table& table, pagenum_t pagenum,
                                 std::optional<Page>& page);
 
-    bool check_all_unpinned() const;
-    void dump_frame_stat() const;
-
  private:
     BufferManager() = default;
     [[nodiscard]] bool init_lru(int num_buf);
@@ -82,6 +82,8 @@ class BufferManager final
     [[nodiscard]] bool clear_block(BufferBlock* block);
 
  private:
+    std::mutex mutex_;
+
     BufferBlock* head_{ nullptr };
     BufferBlock* tail_{ nullptr };
 

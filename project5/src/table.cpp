@@ -33,11 +33,6 @@ std::vector<page_data_t> Table::find_range(int64_t key_start, int64_t key_end)
     return BPTree::find_range(*this, key_start, key_end);
 }
 
-std::string Table::to_string()
-{
-    return BPTree::to_string(*this);
-}
-
 void Table::set_file(File* file)
 {
     file_ = file;
