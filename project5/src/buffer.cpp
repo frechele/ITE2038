@@ -195,6 +195,8 @@ bool BufferManager::free_page(Table& table, pagenum_t pagenum)
 bool BufferManager::get_page(Table& table, pagenum_t pagenum,
                              std::optional<Page>& page)
 {
+    std::scoped_lock lock(mutex_);
+
     table_id_t table_id = table.id();
 
     BufferBlock* current = head_;
