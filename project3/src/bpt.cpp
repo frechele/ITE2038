@@ -336,6 +336,7 @@ pagenum_t BPTree::find_leaf(Table& table, int64_t key)
                     if (current.header().is_leaf)
                     {
                         run = false;
+						return;
                     }
 
                     const auto branches = current.branches();
