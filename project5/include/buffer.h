@@ -89,8 +89,7 @@ class BufferManager final
 
     page_t* page_arr_{ nullptr };
 
-    std::unordered_map<table_id_t, std::unordered_map<pagenum_t, BufferBlock*>>
-        block_tbl_;
+    std::unordered_map<table_page_t, BufferBlock*> block_tbl_;
 
     inline static BufferManager* instance_{ nullptr };
 };

@@ -133,17 +133,26 @@ bool BufferManager::open_table(Table& table)
 
 bool BufferManager::close_table(Table& table)
 {
-    auto& tbl_map = block_tbl_[table.id()];
+    const table_id_t tid = table.id();
 
-    for (const auto& pr : tbl_map)
+    for (const auto& pr : block_tbl_)
     {
+        if (pr.second->table_id() != tid)
+            continue;
+
         while (pr.second->pin_count() > 0)
             ;
 
         CHECK_FAILURE(clear_block(pr.second));
     }
 
-    tbl_map.clear();
+    for (auto it = begin(block_tbl_); it != end(block_tbl_); ++it)
+    {
+        if (it->second->table_id() == tid)
+        {
+            it = block_tbl_.erase(it);
+        }
+    }
 
     return FileMgr().close_table(table);
 }
@@ -201,10 +210,9 @@ bool BufferManager::get_page(Table& table, pagenum_t pagenum,
 
     BufferBlock* current = head_;
 
-    auto tblIt = block_tbl_.find(table_id);
-    std::unordered_map<pagenum_t, BufferBlock*>::iterator it;
-    if (tblIt != end(block_tbl_) &&
-        (it = tblIt->second.find(pagenum)) != tblIt->second.end())
+    auto it = block_tbl_.find({ table_id, pagenum });
+
+    if (it != end(block_tbl_))
     {
         current = it->second;
         current->lock();
@@ -225,12 +233,7 @@ bool BufferManager::get_page(Table& table, pagenum_t pagenum,
             TblMgr().get_table(table_id).value()->file()->file_read_page(
                 pagenum, current->frame_));
 
-        if (tblIt == end(block_tbl_))
-        {
-            block_tbl_.insert_or_assign(
-                table_id, std::unordered_map<pagenum_t, BufferBlock*>());
-        }
-        block_tbl_[table_id].insert_or_assign(pagenum, current);
+        block_tbl_.insert_or_assign({ table_id, pagenum }, current);
     }
 
     unlink_and_enqueue(current);
@@ -310,7 +313,7 @@ BufferBlock* BufferManager::eviction(BufferBlock* block)
     const pagenum_t pagenum = block->pagenum();
 
     CHECK_FAILURE2(clear_block(block), nullptr);
-    block_tbl_[table_id].erase(pagenum);
+    block_tbl_.erase({ table_id, pagenum });
 
     return block;
 }

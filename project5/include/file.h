@@ -8,6 +8,8 @@
 #include <unordered_map>
 #include <utility>
 
+#include "types.h"
+
 // SIZE CONSTANTS
 constexpr size_t PAGE_DATA_VALUE_SIZE = 120;
 
@@ -28,10 +30,6 @@ constexpr size_t PAGE_BRANCHES_IN_PAGE =
 
 constexpr size_t HEADER_PAGE_USED = 24;
 constexpr size_t HEADER_PAGE_RESERVED = PAGE_SIZE - HEADER_PAGE_USED;
-
-// TYPES
-using table_id_t = int;
-using pagenum_t = uint64_t;
 
 constexpr pagenum_t NULL_PAGE_NUM = 0;
 
