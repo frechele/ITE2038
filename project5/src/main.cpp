@@ -1,5 +1,4 @@
 #include <cassert>
-#include <fstream>
 #include <iostream>
 #include <string>
 #include <cstring>
@@ -7,12 +6,14 @@
 #include <chrono>
 #include <thread>
 
-#include "common.h"
 #include "dbapi.h"
 
 using std::cin;
 using std::cout;
 using std::endl;
+
+#define SUCCESSED(cond) ((cond) == 0)
+#define FAILED(cond)   ((cond) != 0)
 
 void test1()
 {
@@ -71,7 +72,6 @@ void test4(int tid)
     int trx1 = trx_begin();
     assert(trx1 == 4);
 
-
     char str_update_by_trx1_1[120] = "UPDATE_BY_TRX1_1";
     char str_update_by_trx1_2[120] = "UPDATE_BY_TRX1_2";
     char value[120];
@@ -85,14 +85,14 @@ void test4(int tid)
 
         assert(SUCCESSED(db_find(tid, 1, value, trx2)));
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(3000));
 
         assert(FAILED(db_update(tid, 2, str_update_by_trx2_2, trx2)));
         assert(FAILED(db_find(tid, 2, value, trx2)));
         assert(trx_commit(trx2) == 0);
     });
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     assert(SUCCESSED(db_update(tid, 2, str_update_by_trx1_2, trx1)));
     assert(SUCCESSED(db_update(tid, 1, str_update_by_trx1_1, trx1)));
@@ -108,10 +108,71 @@ void test4(int tid)
     assert(trx_commit(trx1) == trx1);
 }
 
-template <typename Func, typename... Args>
-void do_test(int test_id, const std::string& desc, Func&& func, Args&&... args)
+void test5(int tid)
 {
-    std::cerr << "[test " << test_id << "] " << desc << "\n";
+    int trx1 = trx_begin();
+    assert(trx1 == 6);
+
+    char value[120];
+    assert(SUCCESSED(db_find(tid, 1, value, trx1)));
+
+    std::thread worker2([tid] {
+        int trx2 = trx_begin();
+        assert(trx2 == 7);
+
+        char str_update_by_trx2[120] = "UPDATE_BY_TRX2";
+        assert(SUCCESSED(db_update(tid, 1, str_update_by_trx2, trx2)));
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+
+        assert(trx_commit(trx2) == trx2);
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    assert(FAILED(db_find(tid, 1, value, trx1)));
+
+    if (worker2.joinable())
+        worker2.join();
+
+    assert(trx_commit(trx1) == 0);
+}
+
+void test6(int tid)
+{
+    int trx1 = trx_begin();
+    assert(trx1 == 8);
+
+    char value[120];
+    char str_update_by_trx2[120] = "UPDATE_BY_TRX1";
+    assert(SUCCESSED(db_update(tid, 1, str_update_by_trx2, trx1)));
+
+    std::thread worker2([tid] {
+        int trx2 = trx_begin();
+        assert(trx2 == 9);
+
+        char value[120];
+        assert(SUCCESSED(db_find(tid, 1, value, trx2)));
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+
+        assert(trx_commit(trx2) == trx2);
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    assert(SUCCESSED(db_find(tid, 1, value, trx1)));
+
+    if (worker2.joinable())
+        worker2.join();
+
+    assert(trx_commit(trx1) == trx1);
+}
+
+template <typename Func, typename... Args>
+void do_test(const std::string& desc, Func&& func, Args&&... args)
+{
+    std::cerr << "[test] " << desc << "\n";
 
     const auto start_point = std::chrono::system_clock::now();
 
@@ -128,23 +189,29 @@ void do_test(int test_id, const std::string& desc, Func&& func, Args&&... args)
 
 int main()
 {
-    if (FAILED(init_db(1000)))
-    {
-        cout << "cannot init db" << endl;
-        return 1;
-    }
+    assert(SUCCESSED(init_db(1000)));
 
-    const int tid = open_table("/mnt/ssd/dbms/test1.db");
+    const int tid = open_table("test.db");
     assert(tid != -1);
 
-    do_test(1, "only trx begin and commit", test1);
-    do_test(2, "trx with find", test2, tid);
-    do_test(3, "multiple find and update", test3, tid);
-    do_test(4, "deadlock detection", test4, tid);
-
-    if (FAILED(shutdown_db()))
+    // GENERATE SAMPLE DB
     {
-        cout << "cannot shutdown db" << endl;
-        return 1;
+        for (int i = 0; i < 100; ++i)
+        {
+            std::string value = "INIT_VALUE_" + i;
+            assert(SUCCESSED(db_insert(tid, i, &value[0])));
+        }
     }
+
+    // TEST CASES
+    do_test("only trx begin and commit", test1);
+    do_test("trx with find", test2, tid);
+    do_test("multiple find and update", test3, tid);
+    do_test("deadlock detection (TC in ppt)", test4, tid);
+    do_test("deadlock detection (S-X-S)", test5, tid);
+    do_test("deadlock detection (X-S-S)", test6, tid);
+
+    assert(SUCCESSED(shutdown_db()));
+
+    cout << "<<< ALL PASSED >>>" << endl;
 }
