@@ -17,8 +17,7 @@ STATIC_LIB:=$(LIBS)libbpt.a
 # Include more files if you write another source file.
 SRCS_FOR_LIB:=$(SRCDIR)bpt.cpp $(SRCDIR)file.cpp $(SRCDIR)dbapi.cpp \
 				$(SRCDIR)page.cpp $(SRCDIR)buffer.cpp $(SRCDIR)table.cpp \
-				$(SRCDIR)lock.cpp $(SRCDIR)xact.cpp $(SRCDIR)log.cpp \
-				$(SRCDIR)deadlock.cpp
+				$(SRCDIR)lock.cpp $(SRCDIR)xact.cpp $(SRCDIR)log.cpp
 OBJS_FOR_LIB:=$(SRCS_FOR_LIB:.cpp=.o)
 
 CFLAGS+= -g -fPIC -I $(INC)

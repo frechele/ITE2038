@@ -92,18 +92,34 @@ Lock* LockManager::acquire(HierarchyID hid, xact_id xid, LockType type)
 
     if (entry->status == LockType::NONE ||
         (entry->status == LockType::SHARED && type == LockType::SHARED) ||
-        (entry->run.back()->xid() == xid))
+        (entry->wait.empty() && entry->run.back()->xid() == xid))
     {
         if (entry->status != LockType::EXCLUSIVE)
             entry->status = type;
 
         entry->run.push_back(lock_obj);
+
+        return lock_obj;
     }
-    else
+    
+    entry->wait.push_back(lock_obj);
+
+    WaitForGraph graph = build_wait_for_graph();
+    WFGNode& node = graph[xid];
+
+    if (!node.Out.empty())
     {
-        entry->wait.push_back(lock_obj);
-        lock_obj->wait(lock);
+        if (check_cycle(graph, node))
+        {
+            // deadlock detected!!
+            entry->wait.remove(lock_obj);
+            delete lock_obj;
+
+            return nullptr;
+        }
     }
+
+    lock_obj->wait(lock);
 
     return lock_obj;
 }
@@ -187,12 +203,46 @@ void LockManager::clear_all_entries()
     entries_.clear();
 }
 
-void LockManager::lock()
+WaitForGraph LockManager::build_wait_for_graph() const
 {
-    mutex_.lock();
+    WaitForGraph graph;
+
+    for (const auto& pr : entries_)
+    {
+        for (const auto before_lk : pr.second->wait)
+        {
+            const xact_id before_xid = before_lk->xid();
+
+            for (const auto after_lk : pr.second->run)
+            {
+                const xact_id after_xid = after_lk->xid();
+
+                graph[before_xid].Out.emplace_back(after_xid);
+                graph[after_xid].In.emplace_back(before_xid);
+            }
+        }
+    }
+
+    return graph;
 }
 
-void LockManager::unlock()
+bool LockManager::check_cycle(WaitForGraph& graph, WFGNode& node) const
 {
-    mutex_.unlock();
+    if (node.visited)
+    {
+        return node.exploring;
+    }
+
+    node.exploring = true;
+    node.visited = true;
+    for (const xact_id after_xid : node.Out)
+    {
+        if (check_cycle(graph, graph[after_xid]))
+        {
+            return true;
+        }
+    }
+
+    node.exploring = false;
+    return false;
 }

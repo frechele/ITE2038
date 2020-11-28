@@ -3,6 +3,7 @@
 #include "common.h"
 #include "log.h"
 
+#include <cassert>
 #include <new>
 
 Xact::Xact(xact_id id) : id_(id)
@@ -17,7 +18,11 @@ xact_id Xact::id() const
 bool Xact::add_lock(HierarchyID hid, LockType type)
 {
     Lock* lk = LockMgr().acquire(hid, id_, type);
-    CHECK_FAILURE(lk != nullptr);
+    if (lk == nullptr)
+    {
+        assert(XactMgr().abort(this));
+        return false;
+    }
 
     std::scoped_lock lock(mutex_);
     locks_.emplace_back(lk);

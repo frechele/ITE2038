@@ -52,6 +52,15 @@ struct HashTableEntry final
     std::list<Lock*> wait;
 };
 
+struct WFGNode final
+{
+    bool visited{ false };
+    bool exploring{ false };
+    std::list<xact_id> In, Out;
+};
+
+using WaitForGraph = std::unordered_map<xact_id, WFGNode>;
+
 class LockManager final
 {
  public:
@@ -66,8 +75,8 @@ class LockManager final
  private:
     void clear_all_entries();
 
-    void lock();
-    void unlock();
+    [[nodiscard]] WaitForGraph build_wait_for_graph() const;
+    [[nodiscard]] bool check_cycle(WaitForGraph& graph, WFGNode& node) const;
 
  private:
     std::mutex mutex_;
@@ -75,7 +84,6 @@ class LockManager final
     std::unordered_map<HierarchyID, HashTableEntry*> entries_;
 
     inline static LockManager* instance_{ nullptr };
-
 };
 
 inline LockManager& LockMgr()
