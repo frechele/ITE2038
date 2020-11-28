@@ -3,6 +3,7 @@
 
 #include "page.h"
 #include "table.h"
+#include "xact.h"
 
 #include <optional>
 #include <string>
@@ -26,10 +27,10 @@ class BPTree
     [[nodiscard]] static bool insert(Table& table, const page_data_t& record);
     [[nodiscard]] static bool remove(Table& table, int64_t key);
     [[nodiscard]] static std::optional<page_data_t> find(Table& table,
-                                                         int64_t key);
-    [[nodiscard]] static std::vector<page_data_t> find_range(Table& table,
-                                                             int64_t key_start,
-                                                             int64_t key_end);
+                                                         int64_t key,
+                                                         Xact* xact = nullptr);
+    [[nodiscard]] static bool update(Table& table, int64_t key,
+                                     const char* value, Xact* xact = nullptr);
 
  private:
     [[nodiscard]] static pagenum_t make_node(Table& table, bool is_leaf);

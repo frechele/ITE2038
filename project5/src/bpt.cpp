@@ -3,11 +3,13 @@
 #include "buffer.h"
 #include "common.h"
 #include "file.h"
+#include "log.h"
 
 #include <cassert>
 
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <queue>
 #include <sstream>
 
@@ -153,13 +155,14 @@ bool BPTree::remove(Table& table, int64_t key)
     return delete_entry(table, leaf, key);
 }
 
-std::optional<page_data_t> BPTree::find(Table& table, int64_t key)
+std::optional<page_data_t> BPTree::find(Table& table, int64_t key, Xact* xact)
 {
     pagenum_t pid = find_leaf(table, key);
     CHECK_FAILURE2(pid != NULL_PAGE_NUM, std::nullopt);
 
     std::optional<page_data_t> result{ std::nullopt };
 
+    HierarchyID hid;
     CHECK_FAILURE2(buffer(
                        [&](Page& page) {
                            const int num_keys = page.header().num_keys;
@@ -168,6 +171,7 @@ std::optional<page_data_t> BPTree::find(Table& table, int64_t key)
 
                            CHECK_FAILURE(i != num_keys);
 
+                           hid = HierarchyID(table.id(), pid, i);
                            result = page.data()[i];
 
                            return true;
@@ -175,55 +179,58 @@ std::optional<page_data_t> BPTree::find(Table& table, int64_t key)
                        table, pid),
                    std::nullopt);
 
+    if (xact != nullptr)
+    {
+        CHECK_FAILURE2(xact->add_lock(hid, LockType::SHARED), std::nullopt);
+    }
+
+    CHECK_FAILURE2(buffer([&](Page& page) { result = page.data()[hid.offset]; },
+                          table, pid),
+                   std::nullopt);
+
     return result;
 }
 
-std::vector<page_data_t> BPTree::find_range(Table& table, int64_t key_start,
-                                            int64_t key_end)
+bool BPTree::update(Table& table, int64_t key, const char* value, Xact* xact)
 {
-    std::vector<page_data_t> result;
+    pagenum_t leaf = find_leaf(table, key);
+    CHECK_FAILURE(leaf != NULL_PAGE_NUM);
 
-    CHECK_FAILURE2(
-        buffer(
-            [&](Page& header) {
-                pagenum_t pagenum = find_leaf(table, key_start);
-                CHECK_FAILURE(pagenum != NULL_PAGE_NUM);
+    HierarchyID hid;
+    page_data_t old_data;
+    CHECK_FAILURE(buffer(
+        [&](Page& page) {
+            const int num_keys = page.header().num_keys;
+            auto data = page.data();
 
-                int i = 0;
-                CHECK_FAILURE(buffer(
-                    [&](Page& page) {
-                        const int num_keys = page.header().num_keys;
-                        const auto data = page.data();
+            int i = binary_search_key(data, num_keys, key);
+            CHECK_FAILURE(i != num_keys);
+            
+            hid = HierarchyID(table.id(), leaf, i);
+            old_data = data[i];
 
-                        for (; i < num_keys && data[i].key < key_start; ++i)
-                            ;
+            return true;
+        },
+        table, leaf));
 
-                        return (i != num_keys);
-                    },
-                    table, pagenum));
+    if (xact != nullptr)
+    {
+        CHECK_FAILURE(xact->add_lock(hid, LockType::EXCLUSIVE));
 
-                while (pagenum != NULL_PAGE_NUM)
-                {
-                    CHECK_FAILURE(buffer(
-                        [&](Page& page) {
-                            const int num_keys = page.header().num_keys;
-                            const auto data = page.data();
+        page_data_t new_data;
+        new_data.key = key;
+        strncpy(new_data.value, value, PAGE_DATA_VALUE_SIZE);
 
-                            for (; i < num_keys && data[i].key <= key_end; ++i)
-                                result.push_back(data[i]);
-                            i = 0;
+        LogMgr().log<LogUpdate>(xact->id(), hid.pagenum, hid.offset, old_data, new_data);
+    }
 
-                            pagenum = page.header().page_a_number;
-                        },
-                        table, pagenum));
-                }
+    CHECK_FAILURE(buffer([&](Page& page) {
+        strncpy(page.data()[hid.offset].value, value, PAGE_DATA_VALUE_SIZE);
 
-                return true;
-            },
-            table),
-        {});
+        page.mark_dirty();
+    }, table, leaf));
 
-    return result;
+    return true;
 }
 
 pagenum_t BPTree::make_node(Table& table, bool is_leaf)
