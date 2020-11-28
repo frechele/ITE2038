@@ -135,16 +135,9 @@ void LogManager::log(xact_id xid, Args&&... args)
             ? 0
             : log_per_xact_[xid].back()->lsn();
 
-    auto log = std::make_unique<LogT>(xid, log_.size(), last_lsn,
-                                      std::forward<Args>(args)...);
-
-    if (last_lsn == 0)
-    {
-        log_per_xact_[xid] = std::list<Log*>();
-    }
-
-    log_per_xact_[xid].emplace_back(log.get());
-    log_.emplace_back(std::move(log));
+    log_.emplace_back(std::make_unique<LogT>(xid, log_.size(), last_lsn,
+                                      std::forward<Args>(args)...));
+    log_per_xact_[xid].emplace_back(log_.back().get());
 }
 
 #endif  // LOG_H_
