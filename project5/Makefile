@@ -15,7 +15,10 @@ TARGET_OBJ:=$(SRCDIR)main.o
 STATIC_LIB:=$(LIBS)libbpt.a
 
 # Include more files if you write another source file.
-SRCS_FOR_LIB:=$(SRCDIR)bpt.cpp $(SRCDIR)file.cpp $(SRCDIR)dbapi.cpp $(SRCDIR)page.cpp $(SRCDIR)buffer.cpp $(SRCDIR)table.cpp $(SRCDIR)lock.cpp $(SRCDIR)xact.cpp
+SRCS_FOR_LIB:=$(SRCDIR)bpt.cpp $(SRCDIR)file.cpp $(SRCDIR)dbapi.cpp \
+				$(SRCDIR)page.cpp $(SRCDIR)buffer.cpp $(SRCDIR)table.cpp \
+				$(SRCDIR)lock.cpp $(SRCDIR)xact.cpp $(SRCDIR)log.cpp \
+				$(SRCDIR)deadlock.cpp
 OBJS_FOR_LIB:=$(SRCS_FOR_LIB:.cpp=.o)
 
 CFLAGS+= -g -fPIC -I $(INC)
@@ -26,7 +29,7 @@ TARGET=main
 all: $(TARGET)
 
 $(TARGET): $(TARGET_OBJ) $(STATIC_LIB)
-	$(CC) $(CXXFLAGS) -o $@ $< -L $(LIBS) -lbpt
+	$(CC) $(CXXFLAGS) -pthread -o $@ $< -L $(LIBS) -lbpt
 
 $(SRCDIR)%.o: $(SRCDIR)%.cpp
 	$(CC) $(CXXFLAGS) -o $@ -c $^
