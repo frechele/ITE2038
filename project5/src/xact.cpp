@@ -95,6 +95,9 @@ bool XactManager::commit(Xact* xact)
 
     CHECK_FAILURE(xact->release_all_locks());
 
+    LogMgr().log<LogCommit>(xact->id());
+    LogMgr().remove(xact->id());
+
     delete xact;
     xacts_.erase(it);
 
@@ -110,6 +113,9 @@ bool XactManager::abort(Xact* xact)
 
     CHECK_FAILURE(xact->undo());
     CHECK_FAILURE(xact->release_all_locks(true));
+
+    LogMgr().log<LogAbort>(xact->id());
+    LogMgr().remove(xact->id());
 
     delete xact;
     xacts_.erase(it);
