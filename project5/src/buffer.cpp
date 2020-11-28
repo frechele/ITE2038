@@ -146,12 +146,17 @@ bool BufferManager::close_table(Table& table)
         CHECK_FAILURE(clear_block(pr.second));
     }
 
-    for (auto it = begin(block_tbl_); it != end(block_tbl_); ++it)
+    for (auto it = begin(block_tbl_); it != end(block_tbl_); )
     {
         if (it->second->table_id() == tid)
         {
             it = block_tbl_.erase(it);
         }
+        else
+        {
+            ++it;
+        }
+        
     }
 
     return FileMgr().close_table(table);
