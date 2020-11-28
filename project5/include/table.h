@@ -2,6 +2,7 @@
 #define TABLE_H_
 
 #include "file.h"
+#include "xact.h"
 
 #include <optional>
 #include <string>
@@ -16,9 +17,8 @@ class Table final
 
     [[nodiscard]] bool insert(const page_data_t& record);
     [[nodiscard]] bool remove(int64_t key);
-    [[nodiscard]] std::optional<page_data_t> find(int64_t key);
-    [[nodiscard]] std::vector<page_data_t> find_range(int64_t key_start,
-                                                      int64_t key_end);
+    [[nodiscard]] std::optional<page_data_t> find(int64_t key, Xact* xact);
+    [[nodiscard]] bool update(int64_t key, const char* value, Xact* xact);
 
     void set_file(File* file);
     File* file();
@@ -48,7 +48,8 @@ class TableManager final
 
     [[nodiscard]] static TableManager& get_instance();
 
-    [[nodiscard]] std::optional<table_id_t> open_table(const std::string& filename);
+    [[nodiscard]] std::optional<table_id_t> open_table(
+        const std::string& filename);
     [[nodiscard]] bool close_table(table_id_t tid);
 
     [[nodiscard]] std::optional<Table*> get_table(table_id_t tid);

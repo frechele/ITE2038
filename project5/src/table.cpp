@@ -23,14 +23,14 @@ bool Table::remove(int64_t key)
     return BPTree::remove(*this, key);
 }
 
-std::optional<page_data_t> Table::find(int64_t key)
+std::optional<page_data_t> Table::find(int64_t key, Xact* xact)
 {
-    return BPTree::find(*this, key);
+    return BPTree::find(*this, key, xact);
 }
 
-std::vector<page_data_t> Table::find_range(int64_t key_start, int64_t key_end)
+bool Table::update(int64_t key, const char* value, Xact* xact)
 {
-    return BPTree::find_range(*this, key_start, key_end);
+    return BPTree::update(*this, key, value, xact);
 }
 
 void Table::set_file(File* file)
