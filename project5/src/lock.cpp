@@ -90,18 +90,38 @@ Lock* LockManager::acquire(HierarchyID hid, xact_id xid, LockType type)
 
     Lock* lock_obj = new Lock(xid, type, entry);
 
-    if (entry->status == LockType::NONE ||
-        (entry->status == LockType::SHARED && type == LockType::SHARED) ||
-        (entry->wait.empty() && entry->run.back()->xid() == xid))
+    bool acquire =
+        (entry->status == LockType::NONE || entry->run.empty()) ||
+        (entry->wait.empty() &&
+         ((entry->status == LockType::SHARED && type == LockType::SHARED) ||
+          (entry->run.back()->xid() == xid)));
+
+    if (!acquire && type == LockType::SHARED)
+    {
+        // if all wait locks are shared
+        // we can change sequence of txn schedule
+
+        acquire = true;
+        for (const auto lk : entry->wait)
+        {
+            if (lk->type() == LockType::EXCLUSIVE)
+            {
+                acquire = false;
+                break;
+            }
+        }
+    }
+
+    if (acquire)
     {
         if (entry->status != LockType::EXCLUSIVE)
             entry->status = type;
 
-        entry->run.push_back(lock_obj);
+        entry->run.emplace_back(lock_obj);
 
         return lock_obj;
     }
-    
+
     entry->wait.push_back(lock_obj);
 
     WaitForGraph graph = build_wait_for_graph();
