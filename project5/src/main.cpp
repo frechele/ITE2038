@@ -136,9 +136,9 @@ void test5(int tid)
 
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-    assert(FAILED(db_find(tid, 1, value, trx1)));
+    assert(SUCCESSED(db_find(tid, 1, value, trx1)));
 
-    assert(trx_commit(trx1) == 0);
+    assert(trx_commit(trx1) == trx1);
 
     if (worker2.joinable())
         worker2.join();
@@ -190,26 +190,28 @@ void test7(int tid)
     }
 
     char str_update_will_be_rollbacked[120] = "WILL_BE_ROLLBACKED";
-    assert(SUCCESSED(db_update(tid, 3, str_update_will_be_rollbacked, trx1)));
-    assert(SUCCESSED(db_update(tid, 4, str_update_will_be_rollbacked, trx1)));
-    assert(SUCCESSED(db_find(tid, 1, value, trx1)));
 
-    std::thread worker2([tid] {
+    std::thread worker2([tid, &str_update_will_be_rollbacked] {
         int trx2 = trx_begin_wrap();
 
-        char str_update_by_trx2[120] = "UPDATE_BY_TRX2";
-        assert(SUCCESSED(db_update(tid, 1, str_update_by_trx2, trx2)));
+        char value[120];
+        assert(SUCCESSED(db_find(tid, 1, value, trx2)));
 
         std::this_thread::sleep_for(std::chrono::milliseconds(3000));
 
-        assert(trx_commit(trx2) == trx2);
+        assert(FAILED(db_update(tid, 2, str_update_will_be_rollbacked, trx2)));
+        assert(FAILED(db_find(tid, 2, value, trx2)));
+
+        assert(trx_commit(trx2) == 0);
     });
 
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-    assert(FAILED(db_find(tid, 1, value, trx1)));
+    char str_update_will_be_not_rollbacked[120] = "WILL_BE_NOT_ROLLBACKED";
+    assert(SUCCESSED(db_update(tid, 2, str_update_will_be_not_rollbacked, trx1)));
+    assert(SUCCESSED(db_update(tid, 1, str_update_will_be_not_rollbacked, trx1)));
 
-    assert(trx_commit(trx1) == 0);
+    assert(trx_commit(trx1) == trx1);
 
     if (worker2.joinable())
         worker2.join();
