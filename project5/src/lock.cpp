@@ -234,13 +234,13 @@ WaitForGraph LockManager::build_wait_for_graph() const
 
     for (const auto& pr : entries_)
     {
-        for (const auto before_lk : pr.second->wait)
+        for (const auto after_lk : pr.second->wait)
         {
-            const xact_id before_xid = before_lk->xid();
+            const xact_id after_xid = after_lk->xid();
 
-            for (const auto after_lk : pr.second->run)
+            for (const auto before_lk : pr.second->run)
             {
-                const xact_id after_xid = after_lk->xid();
+                const xact_id before_xid = before_lk->xid();
 
                 graph[before_xid].Out.emplace_back(after_xid);
                 graph[after_xid].In.emplace_back(before_xid);
