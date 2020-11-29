@@ -1,5 +1,6 @@
 #include "xact.h"
 
+#include "buffer.h"
 #include "common.h"
 #include "log.h"
 
@@ -47,6 +48,26 @@ bool Xact::release_all_locks([[maybe_unused]] bool abort)
 bool Xact::undo()
 {
     std::scoped_lock lock(mutex_);
+
+    const auto& logs = LogMgr().get(id_);
+
+    const auto end_it = logs.rend();
+    for (auto it = logs.rbegin(); it != end_it; ++it)
+    {
+        const LogType type = (*it)->type();
+
+        if (type == LogType::UPDATE)
+        {
+            const auto log = static_cast<LogUpdate*>(*it);
+            const HierarchyID hid = log->hid();
+
+            // table must be avaiable
+            Table* table = TblMgr().get_table(hid.table_id).value();
+            CHECK_FAILURE(buffer([&](Page& page) {
+                page.data()[hid.offset] = log->old_data();
+            }, *table, hid.pagenum));
+        }
+    }
 
     return true;
 }
