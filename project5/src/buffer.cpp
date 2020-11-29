@@ -146,7 +146,7 @@ bool BufferManager::close_table(Table& table)
         CHECK_FAILURE(clear_block(pr.second));
     }
 
-    for (auto it = begin(block_tbl_); it != end(block_tbl_); )
+    for (auto it = begin(block_tbl_); it != end(block_tbl_);)
     {
         if (it->second->table_id() == tid)
         {
@@ -156,7 +156,6 @@ bool BufferManager::close_table(Table& table)
         {
             ++it;
         }
-        
     }
 
     return FileMgr().close_table(table);
@@ -234,9 +233,7 @@ bool BufferManager::get_page(Table& table, pagenum_t pagenum,
         current->table_id_ = table_id;
         current->pagenum_ = pagenum;
 
-        CHECK_FAILURE(
-            TblMgr().get_table(table_id).value()->file()->file_read_page(
-                pagenum, current->frame_));
+        CHECK_FAILURE(table.file()->file_read_page(pagenum, current->frame_));
 
         block_tbl_.insert_or_assign({ table_id, pagenum }, current);
     }
