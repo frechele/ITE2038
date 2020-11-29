@@ -15,17 +15,28 @@ using std::endl;
 #define SUCCESSED(cond) ((cond) == 0)
 #define FAILED(cond)   ((cond) != 0)
 
+int trx_count = 0;
+
+int trx_begin_wrap()
+{
+    ++trx_count;
+
+    const int ret = trx_begin();
+    assert(ret == trx_count);
+
+    return ret;
+}
+
 void test1()
 {
-    int trx_id = trx_begin();
+    int trx_id = trx_begin_wrap();
 
     assert(trx_commit(trx_id) == trx_id);
 }
 
 void test2(int tid)
 {
-    int trx_id = trx_begin();
-    assert(trx_id == 2);
+    int trx_id = trx_begin_wrap();
 
     char value[120];
     assert(SUCCESSED(db_find(tid, 1, value, trx_id)));
@@ -35,8 +46,7 @@ void test2(int tid)
 
 void test3(int tid)
 {
-    int trx_id = trx_begin();
-    assert(trx_id == 3);
+    int trx_id = trx_begin_wrap();
 
     char value[120];
     assert(SUCCESSED(db_find(tid, 1, value, trx_id)));
@@ -69,16 +79,14 @@ void test3(int tid)
 
 void test4(int tid)
 {
-    int trx1 = trx_begin();
-    assert(trx1 == 4);
+    int trx1 = trx_begin_wrap();
 
     char str_update_by_trx1_1[120] = "UPDATE_BY_TRX1_1";
     char str_update_by_trx1_2[120] = "UPDATE_BY_TRX1_2";
     char value[120];
 
     std::thread worker2([tid] {
-        int trx2 = trx_begin();
-        assert(trx2 == 5);
+        int trx2 = trx_begin_wrap();
 
         char value[120];
         char str_update_by_trx2_2[120] = "UPDATE_BY_TRX2_2";
@@ -110,15 +118,13 @@ void test4(int tid)
 
 void test5(int tid)
 {
-    int trx1 = trx_begin();
-    assert(trx1 == 6);
+    int trx1 = trx_begin_wrap();
 
     char value[120];
     assert(SUCCESSED(db_find(tid, 1, value, trx1)));
 
     std::thread worker2([tid] {
-        int trx2 = trx_begin();
-        assert(trx2 == 7);
+        int trx2 = trx_begin_wrap();
 
         char str_update_by_trx2[120] = "UPDATE_BY_TRX2";
         assert(SUCCESSED(db_update(tid, 1, str_update_by_trx2, trx2)));
@@ -140,16 +146,14 @@ void test5(int tid)
 
 void test6(int tid)
 {
-    int trx1 = trx_begin();
-    assert(trx1 == 8);
+    int trx1 = trx_begin_wrap();
 
     char value[120];
     char str_update_by_trx2[120] = "UPDATE_BY_TRX1";
     assert(SUCCESSED(db_update(tid, 1, str_update_by_trx2, trx1)));
 
     std::thread worker2([tid] {
-        int trx2 = trx_begin();
-        assert(trx2 == 9);
+        int trx2 = trx_begin_wrap();
 
         char value[120];
         assert(SUCCESSED(db_find(tid, 1, value, trx2)));
@@ -167,6 +171,68 @@ void test6(int tid)
         worker2.join();
 
     assert(trx_commit(trx1) == trx1);
+}
+
+void test7(int tid)
+{
+    int trx1 = trx_begin_wrap();
+
+    char value[120];
+
+    char orig_value[120], orig_value2[120];
+
+    {
+        int read_trx = trx_begin_wrap();
+        assert(SUCCESSED(db_find(tid, 3, orig_value, read_trx)));
+        assert(SUCCESSED(db_find(tid, 4, orig_value2, read_trx)));
+
+        assert(trx_commit(read_trx) == read_trx);
+    }
+
+    char str_update_will_be_rollbacked[120] = "WILL_BE_ROLLBACKED";
+    assert(SUCCESSED(db_update(tid, 3, str_update_will_be_rollbacked, trx1)));
+    assert(SUCCESSED(db_update(tid, 4, str_update_will_be_rollbacked, trx1)));
+    assert(SUCCESSED(db_find(tid, 1, value, trx1)));
+
+    std::thread worker2([tid] {
+        int trx2 = trx_begin_wrap();
+
+        char str_update_by_trx2[120] = "UPDATE_BY_TRX2";
+        assert(SUCCESSED(db_update(tid, 1, str_update_by_trx2, trx2)));
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+
+        assert(trx_commit(trx2) == trx2);
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    assert(FAILED(db_find(tid, 1, value, trx1)));
+
+    if (worker2.joinable())
+        worker2.join();
+
+    assert(trx_commit(trx1) == 0);
+
+    {
+        int read_trx = trx_begin_wrap();
+        assert(SUCCESSED(db_find(tid, 3, value, read_trx)));
+
+        assert(trx_commit(read_trx) == read_trx);
+
+        assert(strcmp(orig_value, value) == 0);
+        assert(strcmp(value, str_update_will_be_rollbacked) != 0);
+    }
+
+    {
+        int read_trx = trx_begin_wrap();
+        assert(SUCCESSED(db_find(tid, 4, value, read_trx)));
+
+        assert(trx_commit(read_trx) == read_trx);
+
+        assert(strcmp(orig_value2, value) == 0);
+        assert(strcmp(value, str_update_will_be_rollbacked) != 0);
+    }
 }
 
 template <typename Func, typename... Args>
@@ -210,6 +276,7 @@ int main()
     do_test("deadlock detection (TC in ppt)", test4, tid);
     do_test("deadlock detection (S-X-S)", test5, tid);
     do_test("deadlock detection (X-S-S)", test6, tid);
+    do_test("rollback", test7, tid);
 
     assert(SUCCESSED(shutdown_db()));
 
