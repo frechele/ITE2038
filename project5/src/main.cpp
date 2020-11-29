@@ -105,15 +105,15 @@ void test4(int tid)
     assert(SUCCESSED(db_update(tid, 2, str_update_by_trx1_2, trx1)));
     assert(SUCCESSED(db_update(tid, 1, str_update_by_trx1_1, trx1)));
 
-    if (worker2.joinable())
-        worker2.join();
-
     assert(SUCCESSED(db_find(tid, 1, value, trx1)));
     assert(strcmp(value, str_update_by_trx1_1) == 0);
     assert(SUCCESSED(db_find(tid, 2, value, trx1)));
     assert(strcmp(value, str_update_by_trx1_2) == 0);
 
     assert(trx_commit(trx1) == trx1);
+
+    if (worker2.joinable())
+        worker2.join();
 }
 
 void test5(int tid)
@@ -138,10 +138,10 @@ void test5(int tid)
 
     assert(FAILED(db_find(tid, 1, value, trx1)));
 
+    assert(trx_commit(trx1) == 0);
+
     if (worker2.joinable())
         worker2.join();
-
-    assert(trx_commit(trx1) == 0);
 }
 
 void test6(int tid)
@@ -167,10 +167,10 @@ void test6(int tid)
 
     assert(SUCCESSED(db_find(tid, 1, value, trx1)));
 
+    assert(trx_commit(trx1) == trx1);
+
     if (worker2.joinable())
         worker2.join();
-
-    assert(trx_commit(trx1) == trx1);
 }
 
 void test7(int tid)
@@ -209,10 +209,10 @@ void test7(int tid)
 
     assert(FAILED(db_find(tid, 1, value, trx1)));
 
+    assert(trx_commit(trx1) == 0);
+
     if (worker2.joinable())
         worker2.join();
-
-    assert(trx_commit(trx1) == 0);
 
     {
         int read_trx = trx_begin_wrap();
