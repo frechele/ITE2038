@@ -62,9 +62,9 @@ void LogManager::remove(xact_id xid)
     log_per_xact_.erase(xid);
 }
 
-const std::list<Log*>& LogManager::get(xact_id xid) const
+const std::list<Log*>& LogManager::get(xact_id xid)
 {
     std::scoped_lock lock(mutex_);
 
-    return log_per_xact_.at(xid);
+    return log_per_xact_[xid];
 }

@@ -221,7 +221,7 @@ bool BPTree::update(Table& table, int64_t key, const char* value, Xact* xact)
         new_data.key = key;
         strncpy(new_data.value, value, PAGE_DATA_VALUE_SIZE);
 
-        LogMgr().log<LogUpdate>(xact->id(), hid.pagenum, hid.offset, old_data, new_data);
+        LogMgr().log<LogUpdate>(xact->id(), hid, old_data, new_data);
     }
 
     CHECK_FAILURE(buffer([&](Page& page) {

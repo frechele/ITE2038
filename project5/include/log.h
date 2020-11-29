@@ -57,39 +57,32 @@ class LogWithRecordBase : public LogWithoutRecordBase<LogT>
 {
  public:
     LogWithRecordBase(xact_id xid, std::size_t lsn, std::size_t last_lsn,
-                      pagenum_t pid, int offset, page_data_t old_data,
+                      HierarchyID hid, page_data_t old_data,
                       page_data_t new_data)
         : LogWithoutRecordBase<LogT>(xid, lsn, last_lsn),
-          pid_(pid),
-          offset_(offset),
+          hid_(std::move(hid)),
           old_data_(std::move(old_data)),
           new_data_(std::move(new_data))
     {
     }
 
-    pagenum_t pid() const
+    HierarchyID hid() const
     {
-        return pid_;
-    }
-
-    int offset() const
-    {
-        return offset_;
+        return hid_;
     }
 
     const page_data_t& old_data() const
     {
-        return old_data;
+        return old_data_;
     }
 
     const page_data_t& new_data() const
     {
-        return new_data;
+        return new_data_;
     }
 
  private:
-    pagenum_t pid_;
-    int offset_;
+    HierarchyID hid_;
     page_data_t old_data_, new_data_;
 };
 
@@ -110,7 +103,7 @@ class LogManager final
 
     void remove(xact_id xid);
 
-    const std::list<Log*>& get(xact_id xid) const;
+    const std::list<Log*>& get(xact_id xid);
 
  private:
     mutable std::mutex mutex_;
@@ -130,10 +123,9 @@ void LogManager::log(xact_id xid, Args&&... args)
 {
     std::scoped_lock lock(mutex_);
 
-    const std::size_t last_lsn =
-        (log_per_xact_.find(xid) == log_per_xact_.end())
-            ? 0
-            : log_per_xact_[xid].back()->lsn();
+    std::size_t last_lsn = 0;
+    if (!log_per_xact_[xid].empty())
+        last_lsn = log_per_xact_[xid].back()->lsn();
 
     log_.emplace_back(std::make_unique<LogT>(xid, log_.size(), last_lsn,
                                       std::forward<Args>(args)...));
