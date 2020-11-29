@@ -4,6 +4,7 @@
 #include "common.h"
 #include "log.h"
 
+#include <algorithm>
 #include <cassert>
 #include <new>
 
@@ -18,6 +19,14 @@ xact_id Xact::id() const
 
 bool Xact::add_lock(HierarchyID hid, LockType type)
 {
+    if (std::find_if(begin(locks_), end(locks_), [&](const Lock* lock) -> bool {
+            return (static_cast<int>(lock->type()) >= static_cast<int>(type) &&
+                    lock->sentinel()->hid == hid);
+        }) != end(locks_))
+    {
+        return true;
+    }
+
     Lock* lk = LockMgr().acquire(hid, id_, type);
     if (lk == nullptr)
     {
@@ -63,9 +72,9 @@ bool Xact::undo()
 
             // table must be avaiable
             Table* table = TblMgr().get_table(hid.table_id).value();
-            CHECK_FAILURE(buffer([&](Page& page) {
-                page.data()[hid.offset] = log->old_data();
-            }, *table, hid.pagenum));
+            CHECK_FAILURE(buffer(
+                [&](Page& page) { page.data()[hid.offset] = log->old_data(); },
+                *table, hid.pagenum));
         }
     }
 
@@ -133,7 +142,7 @@ bool XactManager::commit(Xact* xact)
 bool XactManager::abort(Xact* xact)
 {
     std::scoped_lock lock(mutex_);
-    
+
     auto it = xacts_.find(xact->id());
     CHECK_FAILURE(it != xacts_.end());
 
