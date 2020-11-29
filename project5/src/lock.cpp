@@ -110,6 +110,11 @@ Lock* LockManager::acquire(HierarchyID hid, xact_id xid, LockType type)
                 break;
             }
         }
+
+        if (entry->run.back()->xid() != xid)
+        {
+            acquire = false;
+        }
     }
 
     if (acquire)
