@@ -183,12 +183,12 @@ void test7(int tid)
 
     char value[120];
 
-    char orig_value[120], orig_value2[120];
+    char str_update_origin[120] = "THIS_IS_ORIGIN";
 
     {
         int read_trx = trx_begin_wrap();
-        assert(SUCCESSED(db_find(tid, 3, orig_value, read_trx)));
-        assert(SUCCESSED(db_find(tid, 4, orig_value2, read_trx)));
+        assert(SUCCESSED(db_update(tid, 3, str_update_origin, read_trx)));
+        assert(SUCCESSED(db_update(tid, 4, str_update_origin, read_trx)));
 
         assert(trx_commit(read_trx) == read_trx);
     }
@@ -197,6 +197,11 @@ void test7(int tid)
 
     std::thread worker2([tid, &str_update_will_be_rollbacked] {
         int trx2 = trx_begin_wrap();
+
+        assert(
+            SUCCESSED(db_update(tid, 3, str_update_will_be_rollbacked, trx2)));
+        assert(
+            SUCCESSED(db_update(tid, 4, str_update_will_be_rollbacked, trx2)));
 
         char value[120];
         assert(SUCCESSED(db_find(tid, 1, value, trx2)));
@@ -228,7 +233,7 @@ void test7(int tid)
 
         assert(trx_commit(read_trx) == read_trx);
 
-        assert(strcmp(orig_value, value) == 0);
+        assert(strcmp(str_update_origin, value) == 0);
         assert(strcmp(value, str_update_will_be_rollbacked) != 0);
     }
 
@@ -238,7 +243,7 @@ void test7(int tid)
 
         assert(trx_commit(read_trx) == read_trx);
 
-        assert(strcmp(orig_value2, value) == 0);
+        assert(strcmp(str_update_origin, value) == 0);
         assert(strcmp(value, str_update_will_be_rollbacked) != 0);
     }
 }
