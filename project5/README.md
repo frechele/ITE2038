@@ -101,5 +101,5 @@ abort는 `XactManager::abort` method에서 처리한다. abort가 발생하면 �
 ### b. rollback
 rollback은 `Xact::undo` method에서 수행된다. `LogManager`로부터 해당 transaction에 대한 모든 유효한 log를 받아 `LogUpdate`인 log에 한해 역순으로 복구한다.
 
-*thread safty에 관한 논의*  
+*thread safety에 관한 논의*  
 rollback이 발생하는 시점엔 rollback으로 복구해야 하는 모든 record에 lock이 걸려있으며, 그 이후 다른 transaction이 해당 record에 대한 lock을 획득한 경우는 **존재하지 않는다**. 따라서 별다른 lock을 걸지 않아도 rollback은 thread-safe 하다.
