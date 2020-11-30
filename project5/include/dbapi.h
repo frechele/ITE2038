@@ -3,7 +3,6 @@
 
 #include <cstdint>
 
-extern "C" {
 int init_db(int num_buf);
 int shutdown_db();
 
@@ -17,6 +16,5 @@ int db_update(int table_id, int64_t key, char* value, int trx_id);
 
 int trx_begin();
 int trx_commit(int trx_id);
-}
 
 #endif  // DBAPI_H_
