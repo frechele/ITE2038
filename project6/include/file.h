@@ -14,8 +14,10 @@
 constexpr size_t PAGE_DATA_VALUE_SIZE = 120;
 
 constexpr size_t PAGE_HEADER_SIZE = 128;
-constexpr size_t PAGE_HEADER_USED = 24;
-constexpr size_t PAGE_HEADER_RESERVED = PAGE_HEADER_SIZE - PAGE_HEADER_USED;
+constexpr size_t PAGE_HEADER_USED = 32;
+constexpr size_t PAGE_HEADER_RESERVED_1 = 8;
+constexpr size_t PAGE_HEADER_RESERVED_2 =
+    PAGE_HEADER_SIZE - PAGE_HEADER_USED - PAGE_HEADER_RESERVED_1;
 constexpr size_t FREE_PAGE_HEADER_USED = 8;
 constexpr size_t FREE_PAGE_HEADER_RESERVED =
     PAGE_HEADER_SIZE - FREE_PAGE_HEADER_USED;
@@ -52,7 +54,11 @@ struct page_header_t final
     int is_leaf;
     int num_keys;
 
-    char reserved[PAGE_HEADER_RESERVED];
+    char reserved1[PAGE_HEADER_RESERVED_1];
+
+    uint64_t page_lsn;
+
+    char reserved2[PAGE_HEADER_RESERVED_2];
 
     pagenum_t page_a_number;
 };
@@ -139,7 +145,7 @@ class File final
 
 class FileManager final
 {
-public:
+ public:
     [[nodiscard]] static bool initialize();
     [[nodiscard]] static bool shutdown();
 
@@ -148,7 +154,7 @@ public:
     [[nodiscard]] bool open_table(Table& table);
     [[nodiscard]] bool close_table(Table& table);
 
-private:
+ private:
     std::unordered_map<std::string, File> files_;
 
     inline static FileManager* instance_{ nullptr };
