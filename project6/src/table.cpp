@@ -85,7 +85,7 @@ bool TableManager::is_initialized()
 std::optional<table_id_t> TableManager::open_table(const std::string& filename)
 {
     std::regex re("DATA\\d+", std::regex::optimize);
-    if (!std::regex_match(filename, re))
+    if (!std::regex_match(filename, re) && filename.find("DATA") != 0)
         return std::nullopt;
 
     table_id_t new_table_id = std::stoi(filename.substr(4));
