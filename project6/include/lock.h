@@ -7,6 +7,7 @@
 #include <list>
 #include <mutex>
 #include <unordered_map>
+#include <tuple>
 
 enum class LockType
 {
@@ -15,6 +16,15 @@ enum class LockType
     EXCLUSIVE
 };
 
+enum class LockAcquireResult
+{
+    FAIL,
+    ACQUIRED,
+    NEED_TO_WAIT,
+    DEADLOCK
+};
+
+class Xact;
 struct HashTableEntry;
 
 class Lock final
@@ -26,16 +36,17 @@ class Lock final
     Lock(const Lock&) = delete;
     Lock& operator=(const Lock&) = delete;
 
-    xact_id xid() const;
+    Xact* xact();
+    const Xact* xact() const;
     LockType type() const;
 
     HashTableEntry* sentinel() const;
 
-    void wait(std::unique_lock<std::mutex>& lock);
+    void wait();
     void notify();
 
  private:
-    xact_id xid_{ 0 };
+    Xact* xact_{ nullptr };
     LockType type_{ LockType::NONE };
 
     HashTableEntry* sentinel_{ nullptr };
@@ -69,7 +80,7 @@ class LockManager final
 
     [[nodiscard]] static LockManager& get_instance();
 
-    [[nodiscard]] Lock* acquire(HierarchyID hid, xact_id xid, LockType type);
+    [[nodiscard]] std::tuple<Lock*, LockAcquireResult> acquire(HierarchyID hid, xact_id xid, LockType type);
     [[nodiscard]] bool release(Lock* lock_obj);
 
  private:

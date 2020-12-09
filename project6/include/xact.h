@@ -19,10 +19,16 @@ class Xact final
 
     [[nodiscard]] xact_id id() const;
 
-    [[nodiscard]] bool add_lock(HierarchyID hid, LockType type);
+    [[nodiscard]] LockAcquireResult add_lock(HierarchyID hid, LockType type,
+                                             Lock** lock_obj = nullptr);
     [[nodiscard]] bool release_all_locks(bool abort = false);
 
     [[nodiscard]] bool undo();
+
+    void lock();
+    void unlock();
+
+    void wait(std::condition_variable& cv);
 
  private:
     std::mutex mutex_;
@@ -44,6 +50,8 @@ class XactManager final
     [[nodiscard]] bool abort(Xact* xact);
 
     [[nodiscard]] Xact* get(xact_id id) const;
+
+    void acquire_xact_lock(Xact* xact);
 
  private:
     XactManager() = default;

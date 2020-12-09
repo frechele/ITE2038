@@ -1,8 +1,8 @@
 #ifndef COMMON_H_
 #define COMMON_H_
 
-#define SUCCESS 0
-#define FAIL 1
+inline constexpr int SUCCESS = 0;
+inline constexpr int FAIL = 1;
 
 #define SUCCESSED(cond) ((cond) == SUCCESS)
 #define FAILED(cond) ((cond) != SUCCESS)

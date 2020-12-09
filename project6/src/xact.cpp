@@ -17,27 +17,43 @@ xact_id Xact::id() const
     return id_;
 }
 
-bool Xact::add_lock(HierarchyID hid, LockType type)
+LockAcquireResult Xact::add_lock(HierarchyID hid, LockType type,
+                                 Lock** lock_obj)
 {
-    if (std::find_if(begin(locks_), end(locks_), [&](const Lock* lock) -> bool {
-            return (static_cast<int>(lock->type()) >= static_cast<int>(type) &&
-                    lock->sentinel()->hid == hid);
-        }) != end(locks_))
+    if (auto it = std::find_if(begin(locks_), end(locks_),
+                               [&](const Lock* lock) -> bool {
+                                   return (static_cast<int>(lock->type()) >=
+                                               static_cast<int>(type) &&
+                                           lock->sentinel()->hid == hid);
+                               });
+        it != end(locks_))
     {
-        return true;
+        if (lock_obj != nullptr)
+            *lock_obj = *it;
+
+        return LockAcquireResult::ACQUIRED;
     }
 
-    Lock* lk = LockMgr().acquire(hid, id_, type);
-    if (lk == nullptr)
+    auto [lk, result] = LockMgr().acquire(hid, id_, type);
+    if (result == LockAcquireResult::FAIL ||
+        result == LockAcquireResult::DEADLOCK)
     {
         assert(XactMgr().abort(this));
-        return false;
+
+        if (lock_obj != nullptr)
+            *lock_obj = nullptr;
+
+        return result;
     }
 
-    std::scoped_lock lock(mutex_);
+    // already mutex_ is locked in line 30
+    // std::scoped_lock lock(mutex_);
     locks_.emplace_back(lk);
 
-    return true;
+    if (lock_obj != nullptr)
+        *lock_obj = lk;
+
+    return result;
 }
 
 bool Xact::release_all_locks([[maybe_unused]] bool abort)
@@ -74,11 +90,28 @@ bool Xact::undo()
             Table* table = TblMgr().get_table(hid.table_id).value();
             CHECK_FAILURE(buffer(
                 [&](Page& page) { page.data()[hid.offset] = log->old_data(); },
-                *table, hid.pagenum));
+                *table, hid.pagenum, false));
         }
     }
 
     return true;
+}
+
+void Xact::lock()
+{
+    mutex_.lock();
+}
+
+void Xact::unlock()
+{
+    mutex_.unlock();
+}
+
+void Xact::wait(std::condition_variable& cv)
+{
+    std::unique_lock<std::mutex> lock(mutex_, std::adopt_lock);
+
+    cv.wait(lock);
 }
 
 bool XactManager::initialize()
@@ -166,4 +199,11 @@ Xact* XactManager::get(xact_id id) const
     CHECK_FAILURE2(it != xacts_.end(), nullptr);
 
     return it->second;
+}
+
+void XactManager::acquire_xact_lock(Xact* xact)
+{
+    std::scoped_lock lock(mutex_);
+
+    xact->lock();
 }

@@ -1,19 +1,25 @@
 #include "lock.h"
 
 #include "common.h"
+#include "xact.h"
 
 #include <algorithm>
 #include <cassert>
 #include <new>
 
 Lock::Lock(xact_id xid, LockType type, HashTableEntry* sentinel)
-    : xid_(xid), type_(type), sentinel_(sentinel)
+    : xact_(XactMgr().get(xid)), type_(type), sentinel_(sentinel)
 {
 }
 
-xact_id Lock::xid() const
+Xact* Lock::xact()
 {
-    return xid_;
+    return const_cast<Xact*>(std::as_const(*this).xact());
+}
+
+const Xact* Lock::xact() const
+{
+    return xact_;
 }
 
 LockType Lock::type() const
@@ -26,14 +32,18 @@ HashTableEntry* Lock::sentinel() const
     return sentinel_;
 }
 
-void Lock::wait(std::unique_lock<std::mutex>& lock)
+void Lock::wait()
 {
-    cond_.wait(lock);
+    xact_->wait(cond_);
 }
 
 void Lock::notify()
 {
+    xact_->lock();
+
     cond_.notify_all();
+
+    xact_->unlock();
 }
 
 bool LockManager::initialize()
@@ -65,7 +75,9 @@ LockManager& LockManager::get_instance()
     return *instance_;
 }
 
-Lock* LockManager::acquire(HierarchyID hid, xact_id xid, LockType type)
+std::tuple<Lock*, LockAcquireResult> LockManager::acquire(HierarchyID hid,
+                                                          xact_id xid,
+                                                          LockType type)
 {
     assert(type != LockType::NONE);
 
@@ -77,7 +89,8 @@ Lock* LockManager::acquire(HierarchyID hid, xact_id xid, LockType type)
     if (it == end(entries_))
     {
         entry = new (std::nothrow) HashTableEntry;
-        CHECK_FAILURE2(entry != nullptr, nullptr);
+        CHECK_FAILURE2(entry != nullptr,
+                       std::make_tuple(nullptr, LockAcquireResult::FAIL));
 
         entry->hid = hid;
 
@@ -89,12 +102,13 @@ Lock* LockManager::acquire(HierarchyID hid, xact_id xid, LockType type)
     }
 
     Lock* lock_obj = new Lock(xid, type, entry);
+    Xact* xact = lock_obj->xact();
 
     bool acquire =
         (entry->status == LockType::NONE || entry->run.empty()) ||
         (entry->wait.empty() &&
          ((entry->status == LockType::SHARED && type == LockType::SHARED) ||
-          (entry->run.back()->xid() == xid)));
+          (entry->run.back()->xact()->id() == xid)));
 
     if (!acquire && type == LockType::SHARED)
     {
@@ -111,7 +125,7 @@ Lock* LockManager::acquire(HierarchyID hid, xact_id xid, LockType type)
             }
         }
 
-        if (entry->run.back()->xid() != xid)
+        if (entry->run.back()->xact()->id() != xid)
         {
             acquire = false;
         }
@@ -124,7 +138,7 @@ Lock* LockManager::acquire(HierarchyID hid, xact_id xid, LockType type)
 
         entry->run.emplace_back(lock_obj);
 
-        return lock_obj;
+        return { lock_obj, LockAcquireResult::ACQUIRED };
     }
 
     entry->wait.push_back(lock_obj);
@@ -140,13 +154,13 @@ Lock* LockManager::acquire(HierarchyID hid, xact_id xid, LockType type)
             entry->wait.remove(lock_obj);
             delete lock_obj;
 
-            return nullptr;
+            return { nullptr, LockAcquireResult::DEADLOCK };
         }
     }
 
-    lock_obj->wait(lock);
+    XactMgr().acquire_xact_lock(xact);
 
-    return lock_obj;
+    return { lock_obj, LockAcquireResult::NEED_TO_WAIT };
 }
 
 bool LockManager::release(Lock* lock_obj)
@@ -236,11 +250,11 @@ WaitForGraph LockManager::build_wait_for_graph() const
     {
         for (const auto after_lk : pr.second->wait)
         {
-            const xact_id after_xid = after_lk->xid();
+            const xact_id after_xid = after_lk->xact()->id();
 
             for (const auto before_lk : pr.second->run)
             {
-                const xact_id before_xid = before_lk->xid();
+                const xact_id before_xid = before_lk->xact()->id();
 
                 graph[before_xid].Out.emplace_back(after_xid);
                 graph[after_xid].In.emplace_back(before_xid);

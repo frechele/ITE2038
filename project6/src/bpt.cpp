@@ -3,6 +3,7 @@
 #include "buffer.h"
 #include "common.h"
 #include "file.h"
+#include "lock.h"
 #include "log.h"
 
 #include <cassert>
@@ -162,31 +163,53 @@ std::optional<page_data_t> BPTree::find(Table& table, int64_t key, Xact* xact)
 
     std::optional<page_data_t> result{ std::nullopt };
 
+    Lock* lock_obj;
+    bool need_wait = false;
     HierarchyID hid;
-    CHECK_FAILURE2(buffer(
-                       [&](Page& page) {
-                           const int num_keys = page.header().num_keys;
-                           int i =
-                               binary_search_key(page.data(), num_keys, key);
+    CHECK_FAILURE2(
+        buffer(
+            [&](Page& page) {
+                const int num_keys = page.header().num_keys;
+                int i = binary_search_key(page.data(), num_keys, key);
 
-                           CHECK_FAILURE(i != num_keys);
+                CHECK_FAILURE(i != num_keys);
 
-                           hid = HierarchyID(table.id(), pid, i);
-                           result = page.data()[i];
+                hid = HierarchyID(table.id(), pid, i);
 
-                           return true;
-                       },
-                       table, pid),
-                   std::nullopt);
+                if (xact != nullptr)
+                {
+                    switch (xact->add_lock(hid, LockType::SHARED, &lock_obj))
+                    {
+                        case LockAcquireResult::DEADLOCK:
+                        case LockAcquireResult::FAIL:
+                            return false;
 
-    if (xact != nullptr)
+                        case LockAcquireResult::NEED_TO_WAIT:
+                            need_wait = true;
+                            return true;
+
+                        default:
+                            break;
+                    }
+                }
+
+                // not need to wait
+                result = page.data()[i];
+
+                return true;
+            },
+            table, pid),
+        std::nullopt);
+
+    if (need_wait)
     {
-        CHECK_FAILURE2(xact->add_lock(hid, LockType::SHARED), std::nullopt);
-    }
+        lock_obj->wait();
 
-    CHECK_FAILURE2(buffer([&](Page& page) { result = page.data()[hid.offset]; },
-                          table, pid),
-                   std::nullopt);
+        CHECK_FAILURE2(
+            buffer([&](Page& page) { result = page.data()[hid.offset]; }, table,
+                   pid),
+            std::nullopt);
+    }
 
     return result;
 }
@@ -196,8 +219,14 @@ bool BPTree::update(Table& table, int64_t key, const char* value, Xact* xact)
     pagenum_t leaf = find_leaf(table, key);
     CHECK_FAILURE(leaf != NULL_PAGE_NUM);
 
+    Lock* lock_obj;
+    bool need_wait = false;
     HierarchyID hid;
-    page_data_t old_data;
+
+    page_data_t old_data, new_data;
+    new_data.key = key;
+    strncpy(new_data.value, value, PAGE_DATA_VALUE_SIZE);
+
     CHECK_FAILURE(buffer(
         [&](Page& page) {
             const int num_keys = page.header().num_keys;
@@ -205,30 +234,52 @@ bool BPTree::update(Table& table, int64_t key, const char* value, Xact* xact)
 
             int i = binary_search_key(data, num_keys, key);
             CHECK_FAILURE(i != num_keys);
-            
+
             hid = HierarchyID(table.id(), leaf, i);
             old_data = data[i];
+
+            if (xact != nullptr)
+            {
+                switch (xact->add_lock(hid, LockType::EXCLUSIVE, &lock_obj))
+                {
+                    case LockAcquireResult::DEADLOCK:
+                    case LockAcquireResult::FAIL:
+                        return false;
+
+                    case LockAcquireResult::NEED_TO_WAIT:
+                        need_wait = true;
+                        return true;
+
+                    default:
+                        break;
+                }
+            }
+
+            // not need to wait
+            strncpy(page.data()[i].value, value, PAGE_DATA_VALUE_SIZE);
+            page.mark_dirty();
 
             return true;
         },
         table, leaf));
 
-    if (xact != nullptr)
+    // This line will only run if there is no deadlock.
+    // Because if deadlock occured, this function is returned in above CHECK_FAILURE
+    LogMgr().log<LogUpdate>(xact->id(), hid, old_data, new_data);
+
+    if (need_wait)
     {
-        CHECK_FAILURE(xact->add_lock(hid, LockType::EXCLUSIVE));
+        lock_obj->wait();
 
-        page_data_t new_data;
-        new_data.key = key;
-        strncpy(new_data.value, value, PAGE_DATA_VALUE_SIZE);
+        CHECK_FAILURE(buffer(
+            [&](Page& page) {
+                strncpy(page.data()[hid.offset].value, value,
+                        PAGE_DATA_VALUE_SIZE);
 
-        LogMgr().log<LogUpdate>(xact->id(), hid, old_data, new_data);
+                page.mark_dirty();
+            },
+            table, leaf));
     }
-
-    CHECK_FAILURE(buffer([&](Page& page) {
-        strncpy(page.data()[hid.offset].value, value, PAGE_DATA_VALUE_SIZE);
-
-        page.mark_dirty();
-    }, table, leaf));
 
     return true;
 }

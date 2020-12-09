@@ -16,7 +16,7 @@
 class BufferBlock final
 {
  public:
-    void lock();
+    void lock(bool lock);
     void unlock();
 
     [[nodiscard]] page_t& frame();
@@ -43,6 +43,7 @@ class BufferBlock final
 
     bool is_dirty_{ false };
     std::atomic<int> pin_count_{ 0 };
+    std::mutex mutex_;
 
     BufferBlock* prev_{ nullptr };
     BufferBlock* next_{ nullptr };
@@ -66,7 +67,7 @@ class BufferManager final
     [[nodiscard]] bool free_page(Table& table, pagenum_t pagenum);
 
     [[nodiscard]] bool get_page(Table& table, pagenum_t pagenum,
-                                std::optional<Page>& page);
+                                std::optional<Page>& page, bool page_lock);
 
  private:
     BufferManager() = default;
@@ -101,10 +102,10 @@ inline BufferManager& BufMgr()
 
 template <typename Function>
 [[nodiscard]] bool buffer(Function&& func, Table& table,
-                          pagenum_t pagenum = NULL_PAGE_NUM)
+                          pagenum_t pagenum = NULL_PAGE_NUM, bool page_lock = true)
 {
     std::optional<Page> opt;
-    CHECK_FAILURE(BufMgr().get_page(table, pagenum, opt));
+    CHECK_FAILURE(BufMgr().get_page(table, pagenum, opt, page_lock));
 
     if constexpr (std::is_void<decltype(func(opt.value()))>::value)
     {

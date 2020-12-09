@@ -7,14 +7,18 @@
 
 #include <iostream>
 
-void BufferBlock::lock()
+void BufferBlock::lock(bool lock)
 {
     ++pin_count_;
+
+    if (lock)
+        mutex_.lock();
 }
 
 void BufferBlock::unlock()
 {
     assert(pin_count() > 0);
+    mutex_.unlock();
     --pin_count_;
 }
 
@@ -206,7 +210,7 @@ bool BufferManager::free_page(Table& table, pagenum_t pagenum)
 }
 
 bool BufferManager::get_page(Table& table, pagenum_t pagenum,
-                             std::optional<Page>& page)
+                             std::optional<Page>& page, bool page_lock)
 {
     std::scoped_lock lock(mutex_);
 
@@ -219,7 +223,7 @@ bool BufferManager::get_page(Table& table, pagenum_t pagenum,
     if (it != end(block_tbl_))
     {
         current = it->second;
-        current->lock();
+        current->lock(page_lock);
     }
     else
     {
@@ -228,7 +232,7 @@ bool BufferManager::get_page(Table& table, pagenum_t pagenum,
 
         CHECK_FAILURE(current != nullptr);
 
-        current->lock();
+        current->lock(page_lock);
 
         current->table_id_ = table_id;
         current->pagenum_ = pagenum;
