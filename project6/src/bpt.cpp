@@ -182,7 +182,7 @@ std::optional<page_data_t> BPTree::find(Table& table, int64_t key, Xact* xact)
                     {
                         case LockAcquireResult::DEADLOCK:
                         case LockAcquireResult::FAIL:
-                            return false;
+                            CHECK_FAILURE(XactMgr().abort(xact) && false);
 
                         case LockAcquireResult::NEED_TO_WAIT:
                             need_wait = true;
@@ -244,7 +244,7 @@ bool BPTree::update(Table& table, int64_t key, const char* value, Xact* xact)
                 {
                     case LockAcquireResult::DEADLOCK:
                     case LockAcquireResult::FAIL:
-                        return false;
+                        CHECK_FAILURE(XactMgr().abort(xact) && false);
 
                     case LockAcquireResult::NEED_TO_WAIT:
                         need_wait = true;
@@ -264,7 +264,8 @@ bool BPTree::update(Table& table, int64_t key, const char* value, Xact* xact)
         table, leaf));
 
     // This line will only run if there is no deadlock.
-    // Because if deadlock occured, this function is returned in above CHECK_FAILURE
+    // Because if deadlock occured, this function is returned in above
+    // CHECK_FAILURE
     LogMgr().log<LogUpdate>(xact->id(), hid, old_data, new_data);
 
     if (need_wait)

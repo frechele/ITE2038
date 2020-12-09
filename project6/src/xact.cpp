@@ -45,9 +45,11 @@ LockAcquireResult Xact::add_lock(HierarchyID hid, LockType type,
 
         return result;
     }
-
-    // already mutex_ is locked in line 30
-    // std::scoped_lock lock(mutex_);
+    else if (result == LockAcquireResult::NEED_TO_WAIT)
+    {
+        mutex_.lock();
+    }
+    
     locks_.emplace_back(lk);
 
     if (lock_obj != nullptr)
@@ -56,13 +58,11 @@ LockAcquireResult Xact::add_lock(HierarchyID hid, LockType type,
     return result;
 }
 
-bool Xact::release_all_locks([[maybe_unused]] bool abort)
+bool Xact::release_all_locks(bool abort)
 {
-    std::scoped_lock lock(mutex_);
-
     for (auto& lk : locks_)
     {
-        CHECK_FAILURE(LockMgr().release(lk));
+        CHECK_FAILURE(LockMgr().release(lk, !abort));
     }
 
     locks_.clear();

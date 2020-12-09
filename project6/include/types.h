@@ -34,6 +34,7 @@ struct HierarchyID final
 };
 
 using xact_id = int;
+inline constexpr xact_id INVALID_XACT_ID = 0;
 
 #include "hashing.h"
 

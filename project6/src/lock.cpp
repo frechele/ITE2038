@@ -7,8 +7,8 @@
 #include <cassert>
 #include <new>
 
-Lock::Lock(xact_id xid, LockType type, HashTableEntry* sentinel)
-    : xact_(XactMgr().get(xid)), type_(type), sentinel_(sentinel)
+Lock::Lock(Xact* xact, LockType type, HashTableEntry* sentinel)
+    : xact_(xact), type_(type), sentinel_(sentinel)
 {
 }
 
@@ -81,6 +81,8 @@ std::tuple<Lock*, LockAcquireResult> LockManager::acquire(HierarchyID hid,
 {
     assert(type != LockType::NONE);
 
+    Xact* xact = XactMgr().get(xid);
+
     std::unique_lock lock(mutex_);
 
     HashTableEntry* entry;
@@ -101,8 +103,7 @@ std::tuple<Lock*, LockAcquireResult> LockManager::acquire(HierarchyID hid,
         entry = it->second;
     }
 
-    Lock* lock_obj = new Lock(xid, type, entry);
-    Xact* xact = lock_obj->xact();
+    Lock* lock_obj = new Lock(xact, type, entry);
 
     bool acquire =
         (entry->status == LockType::NONE || entry->run.empty()) ||
@@ -157,15 +158,15 @@ std::tuple<Lock*, LockAcquireResult> LockManager::acquire(HierarchyID hid,
             return { nullptr, LockAcquireResult::DEADLOCK };
         }
     }
-
-    XactMgr().acquire_xact_lock(xact);
-
+    
     return { lock_obj, LockAcquireResult::NEED_TO_WAIT };
 }
 
-bool LockManager::release(Lock* lock_obj)
+bool LockManager::release(Lock* lock_obj, bool lock_acquire)
 {
-    std::scoped_lock lock(mutex_);
+    std::unique_lock lock(mutex_, std::defer_lock);
+    if (lock_acquire)
+        lock.lock();
 
     HashTableEntry* entry = lock_obj->sentinel();
     CHECK_FAILURE(entry != nullptr);

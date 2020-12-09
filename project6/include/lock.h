@@ -31,7 +31,7 @@ class Lock final
 {
  public:
     Lock() = default;
-    Lock(xact_id xid, LockType type, HashTableEntry* sentinel);
+    Lock(Xact* xact, LockType type, HashTableEntry* sentinel);
 
     Lock(const Lock&) = delete;
     Lock& operator=(const Lock&) = delete;
@@ -81,7 +81,7 @@ class LockManager final
     [[nodiscard]] static LockManager& get_instance();
 
     [[nodiscard]] std::tuple<Lock*, LockAcquireResult> acquire(HierarchyID hid, xact_id xid, LockType type);
-    [[nodiscard]] bool release(Lock* lock_obj);
+    [[nodiscard]] bool release(Lock* lock_obj, bool lock_acquire);
 
  private:
     void clear_all_entries();
