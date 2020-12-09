@@ -21,7 +21,7 @@ class Xact final
 
     [[nodiscard]] LockAcquireResult add_lock(HierarchyID hid, LockType type,
                                              Lock** lock_obj = nullptr);
-    [[nodiscard]] bool release_all_locks(bool abort = false);
+    [[nodiscard]] bool release_all_locks();
 
     [[nodiscard]] bool undo();
 

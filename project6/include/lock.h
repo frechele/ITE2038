@@ -80,8 +80,8 @@ class LockManager final
 
     [[nodiscard]] static LockManager& get_instance();
 
-    [[nodiscard]] std::tuple<Lock*, LockAcquireResult> acquire(HierarchyID hid, xact_id xid, LockType type);
-    [[nodiscard]] bool release(Lock* lock_obj, bool lock_acquire);
+    [[nodiscard]] std::tuple<Lock*, LockAcquireResult> acquire(HierarchyID hid, Xact* xact, LockType type);
+    [[nodiscard]] bool release(Lock* lock_obj);
 
  private:
     void clear_all_entries();

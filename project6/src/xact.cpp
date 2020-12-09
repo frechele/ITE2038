@@ -34,22 +34,13 @@ LockAcquireResult Xact::add_lock(HierarchyID hid, LockType type,
         return LockAcquireResult::ACQUIRED;
     }
 
-    auto [lk, result] = LockMgr().acquire(hid, id_, type);
+    auto [lk, result] = LockMgr().acquire(hid, this, type);
     if (result == LockAcquireResult::FAIL ||
         result == LockAcquireResult::DEADLOCK)
     {
-        assert(XactMgr().abort(this));
-
-        if (lock_obj != nullptr)
-            *lock_obj = nullptr;
-
         return result;
     }
-    else if (result == LockAcquireResult::NEED_TO_WAIT)
-    {
-        mutex_.lock();
-    }
-    
+
     locks_.emplace_back(lk);
 
     if (lock_obj != nullptr)
@@ -58,11 +49,11 @@ LockAcquireResult Xact::add_lock(HierarchyID hid, LockType type,
     return result;
 }
 
-bool Xact::release_all_locks(bool abort)
+bool Xact::release_all_locks()
 {
     for (auto& lk : locks_)
     {
-        CHECK_FAILURE(LockMgr().release(lk, !abort));
+        CHECK_FAILURE(LockMgr().release(lk));
     }
 
     locks_.clear();
@@ -72,8 +63,6 @@ bool Xact::release_all_locks(bool abort)
 
 bool Xact::undo()
 {
-    std::scoped_lock lock(mutex_);
-
     const auto& logs = LogMgr().get(id_);
 
     const auto end_it = logs.rend();
@@ -156,37 +145,31 @@ Xact* XactManager::begin()
 
 bool XactManager::commit(Xact* xact)
 {
-    std::scoped_lock lock(mutex_);
-
-    auto it = xacts_.find(xact->id());
-    CHECK_FAILURE(it != xacts_.end());
-
     CHECK_FAILURE(xact->release_all_locks());
 
     LogMgr().log<LogCommit>(xact->id());
     LogMgr().remove(xact->id());
 
+    std::scoped_lock lock(mutex_);
+
     delete xact;
-    xacts_.erase(it);
+    xacts_.erase(xact->id());
 
     return true;
 }
 
 bool XactManager::abort(Xact* xact)
 {
-    std::scoped_lock lock(mutex_);
-
-    auto it = xacts_.find(xact->id());
-    CHECK_FAILURE(it != xacts_.end());
-
     CHECK_FAILURE(xact->undo());
-    CHECK_FAILURE(xact->release_all_locks(true));
+    CHECK_FAILURE(xact->release_all_locks());
 
     LogMgr().log<LogAbort>(xact->id());
     LogMgr().remove(xact->id());
 
+    std::scoped_lock lock(mutex_);
+
     delete xact;
-    xacts_.erase(it);
+    xacts_.erase(xact->id());
 
     return true;
 }
