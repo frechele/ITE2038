@@ -163,7 +163,7 @@ bool XactManager::abort(Xact* xact)
     CHECK_FAILURE(xact->undo());
     CHECK_FAILURE(xact->release_all_locks());
 
-    LogMgr().log<LogAbort>(xact->id());
+    LogMgr().log<LogRollback>(xact->id());
     LogMgr().remove(xact->id());
 
     std::scoped_lock lock(mutex_);

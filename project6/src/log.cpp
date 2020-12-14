@@ -27,12 +27,15 @@ std::size_t Log::last_lsn() const
     return last_lsn_;
 }
 
-bool LogManager::initialize()
+bool LogManager::initialize(const std::string& logmsg_path)
 {
     CHECK_FAILURE(instance_ == nullptr);
 
     instance_ = new (std::nothrow) LogManager;
     CHECK_FAILURE(instance_ != nullptr);
+
+    instance_->f_logmsg_.open(logmsg_path, std::ios_base::app);
+    CHECK_FAILURE(instance_->f_logmsg_.is_open());
 
     // just for making one-based index
     instance_->log_.emplace_back(nullptr);
@@ -43,6 +46,8 @@ bool LogManager::initialize()
 bool LogManager::shutdown()
 {
     CHECK_FAILURE(instance_ != nullptr);
+
+    instance_->f_logmsg_.close();
 
     delete instance_;
     instance_ = nullptr;
