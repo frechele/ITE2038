@@ -12,14 +12,14 @@ void BufferBlock::lock(bool lock)
 {
     ++pin_count_;
 
-    // if (lock)
-    //     mutex_.lock();
+    if (lock)
+        mutex_.lock();
 }
 
 void BufferBlock::unlock()
 {
     assert(pin_count() > 0);
-    // mutex_.unlock();
+    mutex_.unlock();
     --pin_count_;
 }
 
