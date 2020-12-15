@@ -13,7 +13,7 @@
 int init_db(int num_buf, int flag, int log_num, char* log_path, char* logmsg_path)
 {
     CHECK_FAILURE2(LockManager::initialize(), FAIL);
-    CHECK_FAILURE2(LogManager::initialize(std::string(logmsg_path)), FAIL);
+    CHECK_FAILURE2(LogManager::initialize(std::string(log_path), std::string(logmsg_path)), FAIL);
     CHECK_FAILURE2(XactManager::initialize(), FAIL);
     CHECK_FAILURE2(TableManager::initialize(num_buf), FAIL);
 

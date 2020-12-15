@@ -1,6 +1,7 @@
 #include "buffer.h"
 
 #include "page.h"
+#include "log.h"
 
 #include <memory.h>
 #include <cassert>
@@ -331,6 +332,11 @@ bool BufferManager::clear_block(BufferBlock* block)
 
     if (block->is_dirty_)
     {
+        if (LogMgr().find_pagenum(pagenum))
+        {
+            LogMgr().force();
+        }
+
         CHECK_FAILURE(
             TblMgr().get_table(table_id).value()->file()->file_write_page(
                 pagenum, block->frame_));

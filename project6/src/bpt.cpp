@@ -256,7 +256,8 @@ bool BPTree::update(Table& table, int64_t key, const char* value, Xact* xact)
             }
 
             // not need to wait
-            LogMgr().log<LogUpdate>(xact->id(), hid, old_data, new_data);
+            LogMgr().log_update(xact, hid, PAGE_DATA_VALUE_SIZE - 8,
+                                old_data, new_data);
             strncpy(page.data()[i].value, value, PAGE_DATA_VALUE_SIZE);
             page.mark_dirty();
 
@@ -270,7 +271,8 @@ bool BPTree::update(Table& table, int64_t key, const char* value, Xact* xact)
 
         CHECK_FAILURE(buffer(
             [&](Page& page) {
-                LogMgr().log<LogUpdate>(xact->id(), hid, old_data, new_data);
+                LogMgr().log_update(xact, hid, PAGE_DATA_VALUE_SIZE - 8,
+                                    old_data, new_data);
                 strncpy(page.data()[hid.offset].value, value,
                         PAGE_DATA_VALUE_SIZE);
 
