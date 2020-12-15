@@ -380,7 +380,8 @@ int main()
 
     assert(SUCCESSED(init_db(10, 1, 100, log_file, logmsg_file)));
 
-    const int tid = open_table("DATA1");
+    char table_name[] = "DATA1";
+    const int tid = open_table(table_name);
     assert(tid == 1);
 
     // GENERATE SAMPLE DB
