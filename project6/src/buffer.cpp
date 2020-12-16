@@ -334,7 +334,7 @@ bool BufferManager::clear_block(BufferBlock* block)
     {
         if (LogMgr().find_pagenum(pagenum))
         {
-            LogMgr().force();
+            CHECK_FAILURE(LogMgr().force());
         }
 
         CHECK_FAILURE(
