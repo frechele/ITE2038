@@ -4,6 +4,7 @@
 #include "common.h"
 #include "log.h"
 
+#include <memory.h>
 #include <algorithm>
 #include <cassert>
 #include <new>
@@ -72,13 +73,18 @@ bool Xact::undo()
 
         if (type == LogType::UPDATE)
         {
-            const auto log = static_cast<LogUpdate*>((*it).get());
-            const HierarchyID hid = log->hid();
+            const auto log = (*it).get();
+            const HierarchyID hid(
+                log->table_id(), log->pagenum(),
+                (log->offset() - PAGE_HEADER_SIZE) / log->length());
 
             // table must be avaiable
             Table* table = TblMgr().get_table(hid.table_id).value();
             CHECK_FAILURE(buffer(
-                [&](Page& page) { page.data()[hid.offset] = log->old_data(); },
+                [&](Page& page) {
+                    memcpy(page.data()[hid.offset].value, log->old_data(),
+                           log->length());
+                },
                 *table, hid.pagenum, false));
         }
     }

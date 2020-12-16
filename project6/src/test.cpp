@@ -811,8 +811,8 @@ main(int argc, char* argv[])
 
 	// single_thread_test();
 	// slock_test();
-	// xlock_test();
-	mlock_test();
+	xlock_test();
+	// mlock_test();
 	// deadlock_test();
 
 	return 0;
