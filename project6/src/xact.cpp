@@ -73,10 +73,10 @@ bool Xact::undo()
 
         if (type == LogType::UPDATE)
         {
-            const auto log = (*it).get();
+            const auto log = static_cast<LogUpdate*>((*it).get());
             const HierarchyID hid(
                 log->table_id(), log->pagenum(),
-                (log->offset() - PAGE_HEADER_SIZE) / log->length());
+                (log->offset() - 8 - PAGE_HEADER_SIZE) / PAGE_DATA_SIZE);
 
             // table must be avaiable
             Table* table = TblMgr().get_table(hid.table_id).value();
