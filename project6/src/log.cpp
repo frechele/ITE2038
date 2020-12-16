@@ -7,8 +7,8 @@
 #include <unistd.h>
 #include <cassert>
 
-Log::Log(xact_id xid, LogType type, std::size_t lsn, std::size_t last_lsn)
-    : xid_(xid), type_(type), lsn_(lsn), last_lsn_(last_lsn)
+Log::Log(xact_id xid, LogType type, lsn_t lsn, lsn_t last_lsn, int size)
+    : size_(size), lsn_(lsn), last_lsn_(last_lsn), xid_(xid), type_(type)
 {
 }
 
@@ -22,19 +22,19 @@ xact_id Log::xid() const
     return xid_;
 }
 
-std::size_t Log::lsn() const
+lsn_t Log::lsn() const
 {
     return lsn_;
 }
 
-std::size_t Log::last_lsn() const
+lsn_t Log::last_lsn() const
 {
     return last_lsn_;
 }
 
-std::size_t Log::size() const
+int Log::size() const
 {
-    return sizeof(xid_) + sizeof(type_) + sizeof(lsn_) + sizeof(last_lsn_);
+    return size_;
 }
 
 bool LogManager::initialize(const std::string& log_path,
@@ -92,18 +92,18 @@ void LogManager::log_commit(Xact* xact)
     });
 }
 
-void LogManager::log_update(Xact* xact, HierarchyID hid, std::size_t length,
+void LogManager::log_update(Xact* xact, HierarchyID hid, int length,
                             page_data_t old_data, page_data_t new_data)
 {
-    logging(xact, [&](std::size_t lsn) {
+    logging(xact, [&](int lsn) {
         append_log(LogUpdate(xact->id(), lsn, xact->last_lsn(), std::move(hid),
-                             length, std::move(old_data), std::move(new_data)));
+                             length, std::move(old_data), std::move(new_data), 0));
     });
 }
 
 void LogManager::log_rollback(Xact* xact)
 {
-    logging(xact, [&](std::size_t lsn) {
+    logging(xact, [&](int lsn) {
         append_log(LogRollback(xact->id(), lsn, xact->last_lsn()));
     });
 }
@@ -122,7 +122,7 @@ void LogManager::remove(Xact* xact)
     log_per_xact_.erase(xact->id());
 }
 
-std::size_t LogManager::flushed_lsn() const
+lsn_t LogManager::flushed_lsn() const
 {
     return flushed_lsn_.load();
 }
@@ -131,18 +131,13 @@ bool LogManager::find_pagenum(pagenum_t pid) const
 {
     std::scoped_lock lock(mutex_);
 
-    const std::size_t size = log_.size();
-    for (std::size_t lsn = flushed_lsn(); lsn < size;)
+    for (auto& log : log_)
     {
-        const Log* log = read_buffer(lsn);
-
         if (Log::HasRecord(log->type()))
         {
-            if (static_cast<const LogUpdate*>(log)->hid().pagenum == pid)
+            if (static_cast<const LogUpdate*>(log.get())->hid().pagenum == pid)
                 return true;
         }
-
-        lsn += log->size();
     }
 
     return false;
@@ -152,22 +147,21 @@ bool LogManager::force()
 {
     std::scoped_lock lock(mutex_);
 
-    const std::size_t size = log_.size();
-    pwrite(f_log_, log_.data(), size, flushed_lsn());
+    int flushed = flushed_lsn();
+    for (const auto& log : log_)
+    {
+        const std::size_t size = log->size();
+        
+        CHECK_FAILURE(pwrite(f_log_, log.get(), size, flushed) != -1);
+        f_logmsg_ << *log << '\n';
+        flushed += size;
+    }
 
     fsync(f_log_);
+    f_logmsg_.flush();
+
     log_.clear();
-    flushed_lsn_ += size;
+    flushed_lsn_ = flushed;
 
     return true;
-}
-
-Log* LogManager::read_buffer(std::size_t lsn)
-{
-    return const_cast<Log*>(std::as_const(*this).read_buffer(lsn));
-}
-
-const Log* LogManager::read_buffer(std::size_t lsn) const
-{
-    return reinterpret_cast<const Log*>(&log_[lsn - flushed_lsn()]);
 }

@@ -26,7 +26,9 @@ enum class LogType
 };
 
 constexpr std::size_t NULL_LSN = 0;
+using lsn_t = std::uint64_t;
 
+#pragma pack(1)
 class Log
 {
  public:
@@ -45,20 +47,21 @@ class Log
 
  public:
     Log() = default;
-    Log(xact_id xid, LogType type, std::size_t lsn, std::size_t last_lsn);
+    Log(xact_id xid, LogType type, lsn_t lsn, lsn_t last_lsn, int size);
 
     [[nodiscard]] LogType type() const;
     [[nodiscard]] xact_id xid() const;
-    [[nodiscard]] std::size_t lsn() const;
-    [[nodiscard]] std::size_t last_lsn() const;
+    [[nodiscard]] lsn_t lsn() const;
+    [[nodiscard]] lsn_t last_lsn() const;
 
-    [[nodiscard]] virtual std::size_t size() const;
+    [[nodiscard]] int size() const;
 
  private:
+    int size_{ 28 };
+    lsn_t lsn_{ NULL_LSN };
+    lsn_t last_lsn_{ NULL_LSN };
     xact_id xid_{ 0 };
     LogType type_{ LogType::INVALID };
-    std::size_t lsn_{ NULL_LSN };
-    std::size_t last_lsn_{ NULL_LSN };
 };
 
 template <LogType LogT>
@@ -67,22 +70,22 @@ class LogWithoutRecordBase : public Log
  public:
     LogWithoutRecordBase() = default;
 
-    LogWithoutRecordBase(xact_id xid, std::size_t lsn, std::size_t last_lsn)
-        : Log(xid, LogT, lsn, last_lsn)
+    LogWithoutRecordBase(xact_id xid, lsn_t lsn, lsn_t last_lsn)
+        : Log(xid, LogT, lsn, last_lsn, 28)
     {
     }
 };
 
 template <LogType LogT>
-class LogWithRecordBase : public LogWithoutRecordBase<LogT>
+class LogWithRecordBase : public Log
 {
  public:
     LogWithRecordBase() = default;
 
-    LogWithRecordBase(xact_id xid, std::size_t lsn, std::size_t last_lsn,
-                      HierarchyID hid, std::size_t length, page_data_t old_data,
-                      page_data_t new_data)
-        : LogWithoutRecordBase<LogT>(xid, lsn, last_lsn),
+    LogWithRecordBase(xact_id xid, lsn_t lsn, lsn_t last_lsn, HierarchyID hid,
+                      int length, page_data_t old_data, page_data_t new_data,
+                      int size = 288)
+        : Log(xid, LogT, lsn, last_lsn, size),
           hid_(std::move(hid)),
           length_(length),
           old_data_(std::move(old_data)),
@@ -95,7 +98,7 @@ class LogWithRecordBase : public LogWithoutRecordBase<LogT>
         return hid_;
     }
 
-    [[nodiscard]] std::size_t length() const
+    [[nodiscard]] int length() const
     {
         return length_;
     }
@@ -108,11 +111,6 @@ class LogWithRecordBase : public LogWithoutRecordBase<LogT>
     [[nodiscard]] const page_data_t& new_data() const
     {
         return new_data_;
-    }
-
-    [[nodiscard]] std::size_t size() const override
-    {
-        return Log::size() + sizeof(hid_) + length_ + length_;
     }
 
  private:
@@ -161,40 +159,60 @@ inline std::ostream& operator<<(std::ostream& os, const LogConsiderRedo& log)
     return os;
 }
 
-class LogCompensate : public LogWithRecordBase<LogType::COMPENSATE>
+class LogCompensate final : public LogWithRecordBase<LogType::COMPENSATE>
 {
  public:
     LogCompensate() = default;
-
-    LogCompensate(xact_id xid, std::size_t lsn, std::size_t last_lsn,
-                  HierarchyID hid, std::size_t length, page_data_t old_data,
-                  page_data_t new_data, std::size_t next_undo_lsn)
+    LogCompensate(xact_id xid, lsn_t lsn, lsn_t last_lsn, HierarchyID hid,
+                  int length, page_data_t old_data, page_data_t new_data,
+                  lsn_t next_undo_lsn)
         : LogWithRecordBase<LogType::COMPENSATE>(
               xid, lsn, last_lsn, std::move(hid), length, std::move(old_data),
-              std::move(new_data)),
-          next_undo_lsn_(next_undo_lsn)
+              std::move(new_data), 296)
     {
     }
 
-    std::size_t next_undo_lsn() const
+    [[nodiscard]] lsn_t next_undo_lsn() const
     {
         return next_undo_lsn_;
     }
 
-    std::size_t size() const override
-    {
-        return LogWithRecordBase<LogType::COMPENSATE>::size() +
-               sizeof(next_undo_lsn_);
-    }
-
  private:
-    std::size_t next_undo_lsn_;
+    lsn_t next_undo_lsn_;
 };
 inline std::ostream& operator<<(std::ostream& os, const LogCompensate& log)
 {
     os << "LSN " << log.lsn() + sizeof(log) << " [CLR] next undo lsn "
        << log.next_undo_lsn();
     return os;
+}
+#pragma pack()
+
+inline std::ostream& operator<<(std::ostream& os, const Log& log)
+{
+    switch (log.type())
+    {
+        case LogType::BEGIN:
+            return operator<<(os, static_cast<const LogBegin&>(log));
+
+        case LogType::COMMIT:
+            return operator<<(os, static_cast<const LogCommit&>(log));
+
+        case LogType::UPDATE:
+            return operator<<(os, static_cast<const LogUpdate&>(log));
+
+        case LogType::ROLLBACK:
+            return operator<<(os, static_cast<const LogRollback&>(log));
+
+        case LogType::COMPENSATE:
+            return operator<<(os, static_cast<const LogCompensate&>(log));
+
+        case LogType::CONSIDER_REDO:
+            return operator<<(os, static_cast<const LogConsiderRedo&>(log));
+
+        default:
+            return os;
+    }
 }
 
 class LogManager final
@@ -208,14 +226,14 @@ class LogManager final
 
     void log_begin(Xact* xact);
     void log_commit(Xact* xact);
-    void log_update(Xact* xact, HierarchyID hid, std::size_t lenght,
+    void log_update(Xact* xact, HierarchyID hid, int lenght,
                     page_data_t old_data, page_data_t new_data);
     void log_rollback(Xact* xact);
 
     const std::list<std::unique_ptr<Log>>& get(Xact* xact) const;
     void remove(Xact* xact);
 
-    [[nodiscard]] std::size_t flushed_lsn() const;
+    [[nodiscard]] lsn_t flushed_lsn() const;
 
     [[nodiscard]] bool find_pagenum(pagenum_t pid) const;
 
@@ -229,15 +247,14 @@ class LogManager final
     template <typename LogT>
     void append_log(const LogT& log);
 
-    Log* read_buffer(std::size_t lsn);
-    const Log* read_buffer(std::size_t lsn) const;
-
  private:
     mutable std::recursive_mutex mutex_;
 
-    std::vector<char> log_;
+    std::vector<std::unique_ptr<Log>> log_;
     std::unordered_map<xact_id, std::list<std::unique_ptr<Log>>> log_per_xact_;
-    std::atomic<std::size_t> flushed_lsn_{ 0 };
+
+    std::atomic<lsn_t> flushed_lsn_{ 0 };
+    lsn_t lsn_{ 0 };
 
     int f_log_{ -1 };
     std::ofstream f_logmsg_;
@@ -255,23 +272,18 @@ void LogManager::logging(Xact* xact, Func&& func)
 {
     std::scoped_lock lock(mutex_);
 
-    const std::size_t lsn = flushed_lsn_.load() + log_.size();
+    func(lsn_);
 
-    func(lsn);
-
-    xact->last_lsn(lsn);
+    xact->last_lsn(lsn_);
 }
 
 template <typename LogT>
 void LogManager::append_log(const LogT& log)
 {
-    const std::size_t orig_size = log_.size();
-    const std::size_t size = log.size();
-    log_.resize(orig_size + size);
-
-    memcpy(&log_[orig_size], &log, size);
-
+    log_.emplace_back(std::make_unique<LogT>(log));
     log_per_xact_[log.xid()].emplace_back(std::make_unique<LogT>(log));
+
+    lsn_ += log.size();
 }
 
 #endif  // LOG_H_
