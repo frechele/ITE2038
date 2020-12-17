@@ -1,7 +1,7 @@
 #include "buffer.h"
 
-#include "page.h"
 #include "log.h"
+#include "page.h"
 
 #include <memory.h>
 #include <cassert>
@@ -164,6 +164,18 @@ bool BufferManager::close_table(Table& table)
     }
 
     return FileMgr().close_table(table);
+}
+
+bool BufferManager::sync_all()
+{
+    std::scoped_lock lock(mutex_);
+
+    for (auto& pr : block_tbl_)
+    {
+        CHECK_FAILURE(clear_block(pr.second));
+    }
+
+    return true;
 }
 
 bool BufferManager::create_page(Table& table, bool is_leaf, pagenum_t& pagenum)

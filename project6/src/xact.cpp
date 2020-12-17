@@ -87,6 +87,10 @@ bool Xact::undo()
                     page.mark_dirty();
                 },
                 *table, hid.pagenum, false));
+
+            LogMgr().log_compensate(id_, last_lsn_, hid, PAGE_DATA_VALUE_SIZE,
+                                    log->new_data(), log->old_data(),
+                                    log->last_lsn());
         }
     }
 
@@ -168,6 +172,7 @@ bool XactManager::commit(Xact* xact)
 
     LogMgr().log_commit(xact);
     LogMgr().remove(xact);
+    LogMgr().force();
 
     std::scoped_lock lock(mutex_);
 

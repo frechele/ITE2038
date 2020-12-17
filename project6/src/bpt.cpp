@@ -258,7 +258,7 @@ bool BPTree::update(Table& table, int64_t key, const char* value, Xact* xact)
             // not need to wait
             page.header().page_lsn = LogMgr().log_update(
                 xact, hid, PAGE_DATA_VALUE_SIZE, old_data, new_data);
-            strncpy(page.data()[i].value, value, PAGE_DATA_VALUE_SIZE);
+            memcpy(page.data()[i].value, value, PAGE_DATA_VALUE_SIZE);
             page.mark_dirty();
 
             return true;
@@ -273,7 +273,7 @@ bool BPTree::update(Table& table, int64_t key, const char* value, Xact* xact)
             [&](Page& page) {
                 page.header().page_lsn = LogMgr().log_update(
                     xact, hid, PAGE_DATA_VALUE_SIZE, old_data, new_data);
-                strncpy(page.data()[hid.offset].value, value,
+                memcpy(page.data()[hid.offset].value, value,
                         PAGE_DATA_VALUE_SIZE);
 
                 page.mark_dirty();

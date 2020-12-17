@@ -59,6 +59,8 @@ class BufferManager final
 
     [[nodiscard]] static BufferManager& get_instance();
 
+    [[nodiscard]] bool sync_all();
+
     [[nodiscard]] bool open_table(Table& table);
     [[nodiscard]] bool close_table(Table& table);
 

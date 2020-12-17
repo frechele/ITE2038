@@ -115,8 +115,9 @@ class LogManager final
     lsn_t log_update(Xact* xact, const HierarchyID& hid, int length,
                      page_data_t old_data, page_data_t new_data);
     lsn_t log_rollback(Xact* xact);
-    lsn_t log_compensate(Xact* xact, const HierarchyID& hid, int length,
-                         page_data_t old_data, page_data_t new_data);
+    lsn_t log_rollback(xact_id xid, lsn_t last_lsn);
+    lsn_t log_compensate(xact_id xid, lsn_t last_lsn, const HierarchyID& hid, int length,
+                         const void* old_data, const void* new_data, lsn_t next_undo_lsn);
 
     const std::list<std::unique_ptr<Log>>& get(Xact* xact) const;
     void remove(Xact* xact);
@@ -130,6 +131,7 @@ class LogManager final
     [[nodiscard]] lsn_t base_lsn() const;
     [[nodiscard]] lsn_t next_lsn() const;
 
+    void truncate_log();
     [[nodiscard]] Log read_log(lsn_t lsn) const;
 
  private:

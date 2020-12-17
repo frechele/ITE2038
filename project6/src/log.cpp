@@ -239,15 +239,31 @@ lsn_t LogManager::log_rollback(Xact* xact)
     });
 }
 
-lsn_t LogManager::log_compensate(Xact* xact, const HierarchyID& hid, int length,
-                                 page_data_t old_data, page_data_t new_data)
+lsn_t LogManager::log_rollback(xact_id xid, lsn_t last_lsn)
 {
-    return logging(xact, [&](lsn_t lsn) {
-        append_log(
-            Log::create_compensate(xact->id(), lsn, xact->last_lsn(), hid,
-                                   length, old_data.value, new_data.value, 0),
-            false);
-    });
+    std::scoped_lock lock(mutex_);
+
+    const lsn_t cur_lsn = header_.next_lsn;
+
+    append_log(Log::create_rollback(xid, cur_lsn, last_lsn));
+
+    return cur_lsn;
+}
+
+lsn_t LogManager::log_compensate(xact_id xid, lsn_t last_lsn,
+                                 const HierarchyID& hid, int length,
+                                 const void* old_data, const void* new_data,
+                                 lsn_t next_undo_lsn)
+{
+    std::scoped_lock lock(mutex_);
+
+    const lsn_t cur_lsn = header_.next_lsn;
+
+    append_log(Log::create_compensate(xid, cur_lsn, last_lsn, hid, length,
+                                      old_data, new_data,
+                                      next_undo_lsn));
+
+    return cur_lsn;
 }
 
 const std::list<std::unique_ptr<Log>>& LogManager::get(Xact* xact) const
@@ -316,6 +332,11 @@ lsn_t LogManager::base_lsn() const
 lsn_t LogManager::next_lsn() const
 {
     return header_.next_lsn;
+}
+
+void LogManager::truncate_log()
+{
+    ftruncate(f_log_, sizeof(log_file_header));
 }
 
 Log LogManager::read_log(lsn_t lsn) const

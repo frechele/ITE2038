@@ -27,6 +27,8 @@ class Recovery final
 
  private:
     void analyse();
+    [[nodiscard]] bool redo();
+    [[nodiscard]] bool undo();
 
  private:
     RecoveryMode mode_;
@@ -35,7 +37,7 @@ class Recovery final
     std::ofstream f_log_msg_;
 
     std::unordered_map<xact_id, bool> xacts_;
-    std::unordered_map<pagenum_t, lsn_t> dpt_;
+    std::unordered_map<xact_id, lsn_t> losers_;
 };
 
 #endif  // RECOVERY_H_
