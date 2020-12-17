@@ -1,16 +1,41 @@
 #ifndef RECOVERY_H_
 #define RECOVERY_H_
 
+#include "log.h"
+#include "types.h"
+
 #include <fstream>
+#include <memory>
 #include <string>
+#include <unordered_map>
+
+enum class RecoveryMode
+{
+    NORMAL,
+    REDO_CRASH,
+    UNDO_CRASH
+};
 
 class Recovery final
 {
  public:
-    Recovery(const std::string& log, const std::string& logmsg);
+    Recovery(const std::string& logmsg_path,
+             RecoveryMode mode, int log_num);
+    ~Recovery();
+
+    void start();
 
  private:
-    std::ofstream f_log_;
+    void analyse();
+
+ private:
+    RecoveryMode mode_;
+    int log_num_;
+
+    std::ofstream f_log_msg_;
+
+    std::unordered_map<xact_id, bool> xacts_;
+    std::unordered_map<pagenum_t, lsn_t> dpt_;
 };
 
 #endif  // RECOVERY_H_

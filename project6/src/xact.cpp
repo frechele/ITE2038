@@ -73,7 +73,7 @@ bool Xact::undo()
 
         if (type == LogType::UPDATE)
         {
-            const auto log = static_cast<LogUpdate*>((*it).get());
+            const auto log = (*it).get();
             const HierarchyID hid(
                 log->table_id(), log->pagenum(),
                 (log->offset() - 8 - PAGE_HEADER_SIZE) / PAGE_DATA_SIZE);
@@ -84,6 +84,7 @@ bool Xact::undo()
                 [&](Page& page) {
                     memcpy(page.data()[hid.offset].value, log->old_data(),
                            log->length());
+                    page.mark_dirty();
                 },
                 *table, hid.pagenum, false));
         }
@@ -179,10 +180,11 @@ bool XactManager::commit(Xact* xact)
 bool XactManager::abort(Xact* xact)
 {
     CHECK_FAILURE(xact->undo());
-    CHECK_FAILURE(xact->release_all_locks());
 
     LogMgr().log_rollback(xact);
     LogMgr().remove(xact);
+
+    CHECK_FAILURE(xact->release_all_locks());
 
     std::scoped_lock lock(mutex_);
 

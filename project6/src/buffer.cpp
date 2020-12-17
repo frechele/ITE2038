@@ -12,14 +12,14 @@ void BufferBlock::lock(bool lock)
 {
     ++pin_count_;
 
-    if (lock)
-        mutex_.lock();
+    // if (lock)
+    //     mutex_.lock();
 }
 
 void BufferBlock::unlock()
 {
     assert(pin_count() > 0);
-    mutex_.unlock();
+    // mutex_.unlock();
     --pin_count_;
 }
 
@@ -332,10 +332,8 @@ bool BufferManager::clear_block(BufferBlock* block)
 
     if (block->is_dirty_)
     {
-        if (LogMgr().find_pagenum(pagenum))
-        {
+        if (LogMgr().find_page(table_id, pagenum))
             CHECK_FAILURE(LogMgr().force());
-        }
 
         CHECK_FAILURE(
             TblMgr().get_table(table_id).value()->file()->file_write_page(

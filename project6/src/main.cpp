@@ -388,7 +388,7 @@ int main()
     {
         for (int i = 0; i < 10000; ++i)
         {
-            std::string value = "INIT_VALUE_" + i;
+            std::string value = "INIT_VALUE_" + std::to_string(i);
             assert(SUCCESSED(db_insert(tid, i, &value[0])));
         }
     }
