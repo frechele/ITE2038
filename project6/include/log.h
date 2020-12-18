@@ -3,7 +3,6 @@
 
 #include "file.h"
 #include "types.h"
-#include "xact.h"
 
 #include <memory.h>
 #include <atomic>
@@ -25,7 +24,6 @@ enum class LogType
 };
 
 constexpr std::size_t NULL_LSN = 0;
-using lsn_t = std::uint64_t;
 
 #pragma pack(push, 1)
 class Log
@@ -110,19 +108,16 @@ class LogManager final
 
     [[nodiscard]] static LogManager& get_instance();
 
-    lsn_t log_begin(Xact* xact);
-    lsn_t log_commit(Xact* xact);
-    lsn_t log_update(Xact* xact, const HierarchyID& hid, int length,
+    lsn_t log_begin(xact_id xid);
+    lsn_t log_commit(xact_id xid, lsn_t last_lsn);
+    lsn_t log_update(xact_id xid, lsn_t last_lsn, const HierarchyID& hid, int length,
                      page_data_t old_data, page_data_t new_data);
-    lsn_t log_rollback(Xact* xact);
     lsn_t log_rollback(xact_id xid, lsn_t last_lsn);
     lsn_t log_compensate(xact_id xid, lsn_t last_lsn, const HierarchyID& hid, int length,
                          const void* old_data, const void* new_data, lsn_t next_undo_lsn);
 
-    const std::list<std::unique_ptr<Log>>& get(Xact* xact) const;
-    void remove(Xact* xact);
-
-    [[nodiscard]] lsn_t flushed_lsn() const;
+    const std::list<std::unique_ptr<Log>>& get(xact_id xid) const;
+    void remove(xact_id xid);
 
     [[nodiscard]] bool find_page(table_id_t tid, pagenum_t pid) const;
 
@@ -138,7 +133,7 @@ class LogManager final
     LogManager() = default;
 
     template <typename Func>
-    [[nodiscard]] lsn_t logging(Xact* xact, Func&& func);
+    [[nodiscard]] lsn_t logging(Func&& func);
     template <typename LogT>
     void append_log(const LogT& log);
 
@@ -150,7 +145,6 @@ class LogManager final
     std::vector<std::unique_ptr<Log>> log_;
     std::unordered_map<xact_id, std::list<std::unique_ptr<Log>>> log_per_xact_;
 
-    std::atomic<lsn_t> flushed_lsn_{ 0 };
     log_file_header header_;
 
     int f_log_{ -1 };
@@ -164,7 +158,7 @@ inline LogManager& LogMgr()
 }
 
 template <typename Func>
-lsn_t LogManager::logging(Xact* xact, Func&& func)
+lsn_t LogManager::logging(Func&& func)
 {
     std::scoped_lock lock(mutex_);
 

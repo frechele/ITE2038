@@ -64,7 +64,7 @@ bool Xact::release_all_locks()
 
 bool Xact::undo()
 {
-    const auto& logs = LogMgr().get(this);
+    const auto& logs = LogMgr().get(id_);
 
     const auto end_it = logs.rend();
     for (auto it = logs.rbegin(); it != end_it; ++it)
@@ -114,12 +114,12 @@ void Xact::wait(std::condition_variable& cv)
     cv.wait(lock);
 }
 
-void Xact::last_lsn(std::size_t lsn)
+void Xact::last_lsn(lsn_t lsn)
 {
     last_lsn_ = lsn;
 }
 
-std::size_t Xact::last_lsn() const
+lsn_t Xact::last_lsn() const
 {
     return last_lsn_;
 }
@@ -175,7 +175,8 @@ Xact* XactManager::begin()
 
     ++global_xact_counter_;
 
-    LogMgr().log_begin(xact);
+    const lsn_t lsn = LogMgr().log_begin(id);
+    xact->last_lsn(lsn);
 
     return xact;
 }
@@ -184,14 +185,16 @@ bool XactManager::commit(Xact* xact)
 {
     CHECK_FAILURE(xact->release_all_locks());
 
-    LogMgr().log_commit(xact);
-    LogMgr().remove(xact);
+    const xact_id xid = xact->id();
+
+    LogMgr().log_commit(xid, xact->last_lsn());
+    LogMgr().remove(xid);
     CHECK_FAILURE(LogMgr().force());
 
     std::scoped_lock lock(mutex_);
 
     delete xact;
-    xacts_.erase(xact->id());
+    xacts_.erase(xid);
 
     return true;
 }
@@ -200,8 +203,10 @@ bool XactManager::abort(Xact* xact)
 {
     CHECK_FAILURE(xact->undo());
 
-    LogMgr().log_rollback(xact);
-    LogMgr().remove(xact);
+    const xact_id xid = xact->id();
+
+    LogMgr().log_rollback(xid, xact->last_lsn());
+    LogMgr().remove(xid);
     CHECK_FAILURE(LogMgr().force());
 
     CHECK_FAILURE(xact->release_all_locks());
@@ -209,7 +214,7 @@ bool XactManager::abort(Xact* xact)
     std::scoped_lock lock(mutex_);
 
     delete xact;
-    xacts_.erase(xact->id());
+    xacts_.erase(xid);
 
     return true;
 }

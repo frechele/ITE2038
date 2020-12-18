@@ -30,13 +30,13 @@ class Xact final
 
     void wait(std::condition_variable& cv);
 
-    void last_lsn(std::size_t lsn);
-    std::size_t last_lsn() const;
+    void last_lsn(lsn_t lsn);
+    lsn_t last_lsn() const;
 
  private:
     std::mutex mutex_;
     xact_id id_;
-    std::size_t last_lsn_{ 0 };
+    lsn_t last_lsn_{ 0 };
 
     std::list<Lock*> locks_;
 };

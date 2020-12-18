@@ -9,6 +9,8 @@ using table_id_t = int;
 using pagenum_t = uint64_t;
 using table_page_t = std::tuple<table_id_t, pagenum_t>;
 
+using lsn_t = std::uint64_t;
+
 struct HierarchyID final
 {
     table_id_t table_id{ 0 };

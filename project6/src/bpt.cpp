@@ -256,10 +256,14 @@ bool BPTree::update(Table& table, int64_t key, const char* value, Xact* xact)
             }
 
             // not need to wait
-            page.header().page_lsn = LogMgr().log_update(
-                xact, hid, PAGE_DATA_VALUE_SIZE, old_data, new_data);
             memcpy(page.data()[i].value, value, PAGE_DATA_VALUE_SIZE);
             page.mark_dirty();
+
+            const lsn_t lsn =
+                LogMgr().log_update(xact->id(), xact->last_lsn(), hid,
+                                    PAGE_DATA_VALUE_SIZE, old_data, new_data); 
+            page.header().page_lsn = lsn;
+            xact->last_lsn(lsn);
 
             return true;
         },
@@ -271,12 +275,15 @@ bool BPTree::update(Table& table, int64_t key, const char* value, Xact* xact)
 
         CHECK_FAILURE(buffer(
             [&](Page& page) {
-                page.header().page_lsn = LogMgr().log_update(
-                    xact, hid, PAGE_DATA_VALUE_SIZE, old_data, new_data);
                 memcpy(page.data()[hid.offset].value, value,
-                        PAGE_DATA_VALUE_SIZE);
-
+                       PAGE_DATA_VALUE_SIZE);
                 page.mark_dirty();
+
+                const lsn_t lsn = LogMgr().log_update(
+                    xact->id(), xact->last_lsn(), hid, PAGE_DATA_VALUE_SIZE,
+                    old_data, new_data);
+                page.header().page_lsn = lsn;
+                xact->last_lsn(lsn);
             },
             table, leaf));
     }

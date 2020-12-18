@@ -206,52 +206,35 @@ LogManager& LogManager::get_instance()
     return *instance_;
 }
 
-lsn_t LogManager::log_begin(Xact* xact)
+lsn_t LogManager::log_begin(xact_id xid)
 {
-    return logging(xact, [&](lsn_t lsn) {
-        xact->last_lsn(lsn);
-
-        append_log(Log::create_begin(xact->id(), lsn));
-    });
+    return logging([&](lsn_t lsn) { append_log(Log::create_begin(xid, lsn)); });
 }
 
-lsn_t LogManager::log_commit(Xact* xact)
+lsn_t LogManager::log_commit(xact_id xid, lsn_t last_lsn)
 {
-    return logging(xact, [&](lsn_t lsn) {
-        append_log(Log::create_commit(xact->id(), lsn, xact->last_lsn()));
+    return logging([&](lsn_t lsn) {
+        append_log(Log::create_commit(xid, lsn, last_lsn));
 
         assert(force());
     });
 }
 
-lsn_t LogManager::log_update(Xact* xact, const HierarchyID& hid, int length,
+lsn_t LogManager::log_update(xact_id xid, lsn_t last_lsn,
+                             const HierarchyID& hid, int length,
                              page_data_t old_data, page_data_t new_data)
 {
-    return logging(xact, [&](lsn_t lsn) {
-        xact->last_lsn(lsn);
-
-        append_log(Log::create_update(xact->id(), lsn, xact->last_lsn(),
-                                      std::move(hid), length, old_data.value,
-                                      new_data.value));
-    });
-}
-
-lsn_t LogManager::log_rollback(Xact* xact)
-{
-    return logging(xact, [&](lsn_t lsn) {
-        append_log(Log::create_rollback(xact->id(), lsn, xact->last_lsn()));
+    return logging([&](lsn_t lsn) {
+        append_log(Log::create_update(xid, lsn, last_lsn, std::move(hid),
+                                      length, old_data.value, new_data.value));
     });
 }
 
 lsn_t LogManager::log_rollback(xact_id xid, lsn_t last_lsn)
 {
-    std::scoped_lock lock(mutex_);
-
-    const lsn_t cur_lsn = header_.next_lsn;
-
-    append_log(Log::create_rollback(xid, cur_lsn, last_lsn));
-
-    return cur_lsn;
+    return logging([&](lsn_t lsn) {
+        append_log(Log::create_rollback(xid, lsn, last_lsn));
+    });
 }
 
 lsn_t LogManager::log_compensate(xact_id xid, lsn_t last_lsn,
@@ -259,34 +242,24 @@ lsn_t LogManager::log_compensate(xact_id xid, lsn_t last_lsn,
                                  const void* old_data, const void* new_data,
                                  lsn_t next_undo_lsn)
 {
-    std::scoped_lock lock(mutex_);
-
-    const lsn_t cur_lsn = header_.next_lsn;
-
-    append_log(Log::create_compensate(xid, cur_lsn, last_lsn, hid, length,
-                                      old_data, new_data,
-                                      next_undo_lsn));
-
-    return cur_lsn;
+    return logging([&](lsn_t lsn) {
+        append_log(Log::create_compensate(xid, lsn, last_lsn, hid, length,
+                                          old_data, new_data, next_undo_lsn));
+    });
 }
 
-const std::list<std::unique_ptr<Log>>& LogManager::get(Xact* xact) const
+const std::list<std::unique_ptr<Log>>& LogManager::get(xact_id xid) const
 {
     std::scoped_lock lock(mutex_);
 
-    return log_per_xact_.at(xact->id());
+    return log_per_xact_.at(xid);
 }
 
-void LogManager::remove(Xact* xact)
+void LogManager::remove(xact_id xid)
 {
     std::scoped_lock lock(mutex_);
 
-    log_per_xact_.erase(xact->id());
-}
-
-lsn_t LogManager::flushed_lsn() const
-{
-    return flushed_lsn_.load();
+    log_per_xact_.erase(xid);
 }
 
 bool LogManager::find_page(table_id_t tid, pagenum_t pid) const
@@ -311,19 +284,18 @@ bool LogManager::force()
 
     CHECK_FAILURE(pwrite(f_log_, &header_, sizeof(log_file_header), 0) != -1);
 
-    int flushed = flushed_lsn();
     for (const auto& log : log_)
     {
         const std::size_t size = log->size();
 
-        CHECK_FAILURE(pwrite(f_log_, log.get(), size, flushed + sizeof(log_file_header) - header_.base_lsn) != -1);
-        flushed += size;
+        CHECK_FAILURE(
+            pwrite(f_log_, log.get(), size,
+                   log->lsn() + sizeof(log_file_header)) != -1);
     }
 
     fsync(f_log_);
 
     log_.clear();
-    flushed_lsn_ = flushed;
 
     return true;
 }
