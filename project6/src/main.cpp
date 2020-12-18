@@ -4,9 +4,11 @@
 #include <string>
 #include <vector>
 
+#include <atomic>
 #include <chrono>
 #include <mutex>
 #include <thread>
+#include <random>
 
 #include "dbapi.h"
 
@@ -18,29 +20,56 @@ using std::endl;
 #define FAILED(cond) ((cond) != 0)
 #define CHECK(cond, var) (var ? SUCCESSED(cond) : FAILED(cond))
 
+std::atomic<int> counter{ 0 };
+
 void func()
 {
-    int trx_id = trx_begin();
+    for (int i = 0; i < 1000; ++i)
+    {
+        int trx_id = trx_begin();
 
-    db_update(1, 3, "XYZ", trx_id);
-    trx_commit(trx_id);
+        std::random_device rd;
+        std::mt19937 engine(rd());
 
-    int new_id = trx_begin();
-    db_update(1, 2, "XXX", new_id);
-    exit(0);
+        std::uniform_int_distribution<int> dist(0, 10000-1);
+
+        int key = dist(engine);
+        db_update(1, key, &(std::string("VALUE") + std::to_string(key) + std::to_string(rd()))[0], trx_id);
+
+        ++counter;
+        if (counter.load() == 100)
+        {
+            exit(0);
+        }
+
+        trx_commit(trx_id);
+    }
 }
 
 int main()
 {
-    init_db(1000, 0, 0, "logfile.data", "logmsg.txt");
+    init_db(1000, 0, 10, "logfile.data", "logmsg.txt");
 
     open_table("DATA1");
 
-    db_insert(1, 2, "AAA");
-    db_insert(1, 3, "AAA");
+    for (int i = 0; i < 10000; ++i)
+    {
+        db_insert(1, i, "AAA");
+    }
 
-    std::thread worker(func);
-    worker.detach();
+    // for (int i = 0; i < 5; ++i)
+    // {
+    //     std::thread worker(func);
+    //     worker.detach();
+    // }
 
-    while(1);
+    int trx = trx_begin();
+
+    db_update(1, 3, "XYZ", trx);
+
+    trx_commit(trx);
+
+    trx = trx_begin();
+
+    db_update(1, 2, "XXX", trx);
 }
