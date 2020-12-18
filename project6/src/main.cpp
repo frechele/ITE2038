@@ -52,10 +52,10 @@ int main()
 
     open_table("DATA1");
 
-    for (int i = 0; i < 10000; ++i)
-    {
-        db_insert(1, i, "AAA");
-    }
+    // for (int i = 0; i < 100; ++i)
+    // {
+    //     db_insert(1, i, "AAA");
+    // }
 
     // for (int i = 0; i < 5; ++i)
     // {
@@ -72,4 +72,8 @@ int main()
     trx = trx_begin();
 
     db_update(1, 2, "XXX", trx);
+
+    exit(0);
+
+    shutdown_db();
 }
