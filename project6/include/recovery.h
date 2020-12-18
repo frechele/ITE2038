@@ -36,6 +36,7 @@ class Recovery final
 
     std::ofstream f_log_msg_;
 
+    std::unordered_map<lsn_t, Log> logs_;
     std::unordered_map<xact_id, bool> xacts_;
     std::unordered_map<xact_id, lsn_t> losers_;
 };

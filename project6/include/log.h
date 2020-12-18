@@ -140,7 +140,7 @@ class LogManager final
     template <typename Func>
     [[nodiscard]] lsn_t logging(Xact* xact, Func&& func);
     template <typename LogT>
-    void append_log(const LogT& log, bool add_to_search = true);
+    void append_log(const LogT& log);
 
     [[nodiscard]] Log read_log_offset(lsn_t offset) const;
 
@@ -171,18 +171,15 @@ lsn_t LogManager::logging(Xact* xact, Func&& func)
     const lsn_t cur_lsn = header_.next_lsn;
 
     func(cur_lsn);
-
-    xact->last_lsn(cur_lsn);
+    
     return cur_lsn;
 }
 
 template <typename LogT>
-void LogManager::append_log(const LogT& log, bool add_to_search)
+void LogManager::append_log(const LogT& log)
 {
     log_.emplace_back(std::make_unique<LogT>(log));
-
-    if (add_to_search)
-        log_per_xact_[log.xid()].emplace_back(std::make_unique<LogT>(log));
+    log_per_xact_[log.xid()].emplace_back(std::make_unique<LogT>(log));
 
     header_.next_lsn += log.size();
 }

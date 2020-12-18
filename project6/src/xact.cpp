@@ -71,7 +71,7 @@ bool Xact::undo()
     {
         const LogType type = (*it)->type();
 
-        if (type == LogType::UPDATE)
+        if (Log::HasRecord(type))
         {
             const auto log = (*it).get();
             const HierarchyID hid(
@@ -88,9 +88,9 @@ bool Xact::undo()
                 },
                 *table, hid.pagenum, false));
 
-            LogMgr().log_compensate(id_, last_lsn_, hid, PAGE_DATA_VALUE_SIZE,
-                                    log->new_data(), log->old_data(),
-                                    log->last_lsn());
+            last_lsn_ = LogMgr().log_compensate(
+                id_, last_lsn_, hid, PAGE_DATA_VALUE_SIZE, log->new_data(),
+                log->old_data(), log->last_lsn());
         }
     }
 
@@ -149,6 +149,20 @@ XactManager& XactManager::get_instance()
     return *instance_;
 }
 
+Xact* XactManager::add_xact(xact_id xid, lsn_t last_lsn)
+{
+    std::scoped_lock lock(mutex_);
+
+    Xact* xact = new (std::nothrow) Xact(xid);
+    CHECK_FAILURE2(xact != nullptr, nullptr);
+
+    xacts_.insert_or_assign(xid, xact);
+
+    global_xact_counter_ = std::max(global_xact_counter_, xid);
+
+    return xact;
+}
+
 Xact* XactManager::begin()
 {
     std::scoped_lock lock(mutex_);
@@ -172,7 +186,7 @@ bool XactManager::commit(Xact* xact)
 
     LogMgr().log_commit(xact);
     LogMgr().remove(xact);
-    LogMgr().force();
+    CHECK_FAILURE(LogMgr().force());
 
     std::scoped_lock lock(mutex_);
 
@@ -188,6 +202,7 @@ bool XactManager::abort(Xact* xact)
 
     LogMgr().log_rollback(xact);
     LogMgr().remove(xact);
+    CHECK_FAILURE(LogMgr().force());
 
     CHECK_FAILURE(xact->release_all_locks());
 

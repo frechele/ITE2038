@@ -209,6 +209,8 @@ LogManager& LogManager::get_instance()
 lsn_t LogManager::log_begin(Xact* xact)
 {
     return logging(xact, [&](lsn_t lsn) {
+        xact->last_lsn(lsn);
+
         append_log(Log::create_begin(xact->id(), lsn));
     });
 }
@@ -226,6 +228,8 @@ lsn_t LogManager::log_update(Xact* xact, const HierarchyID& hid, int length,
                              page_data_t old_data, page_data_t new_data)
 {
     return logging(xact, [&](lsn_t lsn) {
+        xact->last_lsn(lsn);
+
         append_log(Log::create_update(xact->id(), lsn, xact->last_lsn(),
                                       std::move(hid), length, old_data.value,
                                       new_data.value));
@@ -312,7 +316,7 @@ bool LogManager::force()
     {
         const std::size_t size = log->size();
 
-        CHECK_FAILURE(pwrite(f_log_, log.get(), size, flushed) != -1);
+        CHECK_FAILURE(pwrite(f_log_, log.get(), size, flushed + sizeof(log_file_header) - header_.base_lsn) != -1);
         flushed += size;
     }
 
@@ -341,7 +345,7 @@ void LogManager::truncate_log()
 
 Log LogManager::read_log(lsn_t lsn) const
 {
-    return read_log_offset(lsn - header_.base_lsn);
+    return read_log_offset(lsn - header_.base_lsn + sizeof(log_file_header));
 }
 
 Log LogManager::read_log_offset(lsn_t offset) const

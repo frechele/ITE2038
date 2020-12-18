@@ -49,6 +49,8 @@ class XactManager final
 
     [[nodiscard]] static XactManager& get_instance();
 
+    [[nodiscard]] Xact* add_xact(xact_id xid, std::uint64_t last_lsn);
+
     [[nodiscard]] Xact* begin();
     [[nodiscard]] bool commit(Xact* xact);
     [[nodiscard]] bool abort(Xact* xact);

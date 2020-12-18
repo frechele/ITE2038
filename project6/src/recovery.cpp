@@ -7,6 +7,8 @@
 #include <unistd.h>
 #include <cassert>
 
+#include <iostream>
+
 Recovery::Recovery(const std::string& logmsg_path, RecoveryMode mode,
                    int log_num)
     : mode_(mode), log_num_(log_num)
@@ -39,15 +41,12 @@ void Recovery::start()
     assert(BufMgr().sync_all());
     assert(TblMgr().close_all_tables());
 
-    assert(LogMgr().force());
     LogMgr().truncate_log();
 }
 
 void Recovery::analyse()
 {
     f_log_msg_ << "[ANALYSIS] Analysis pass start\n";
-
-    std::unordered_map<xact_id, lsn_t> last_seqs_;
 
     const lsn_t next_lsn = LogMgr().next_lsn();
     for (lsn_t lsn = LogMgr().base_lsn(); lsn < next_lsn;)
@@ -57,7 +56,7 @@ void Recovery::analyse()
         if (log.type() == LogType::BEGIN)
         {
             xacts_[log.xid()] = false;
-            losers_[log.xid()] = 0;
+            losers_[log.xid()] = NULL_LSN;
         }
         else if (log.type() == LogType::COMMIT ||
                  log.type() == LogType::ROLLBACK)
@@ -71,10 +70,10 @@ void Recovery::analyse()
                 assert(TblMgr().open_table(std::string("DATA") +
                                            std::to_string(log.table_id())));
 
-            losers_[log.xid()] = log.lsn();
+            losers_[log.xid()] = lsn;
         }
 
-        last_seqs_[log.xid()] = lsn;
+        logs_[lsn] = log;
 
         lsn += log.size();
     }
@@ -100,9 +99,9 @@ bool Recovery::redo()
     const lsn_t next_lsn = LogMgr().next_lsn();
     for (lsn_t lsn = LogMgr().base_lsn(); lsn < next_lsn;)
     {
-        Log log = LogMgr().read_log(lsn);
+        Log& log = logs_[lsn];
 
-        f_log_msg_ << "LSN " << lsn << " ";
+        f_log_msg_ << "LSN " << lsn + log.size() << " ";
 
         switch (log.type())
         {
@@ -160,7 +159,7 @@ bool Recovery::redo()
                 break;
         }
 
-        f_log_msg_ << '\n';
+        f_log_msg_ << std::endl;
 
         if (mode_ == RecoveryMode::REDO_CRASH && --log_num_ == 0)
         {
@@ -171,7 +170,7 @@ bool Recovery::redo()
         lsn += log.size();
     }
 
-    f_log_msg_ << "[REDO] Redo pass end\n";
+    f_log_msg_ << "[REDO] Redo pass end" << std::endl;
     f_log_msg_.flush();
 
     return true;
@@ -185,19 +184,21 @@ bool Recovery::undo()
     std::unordered_map<xact_id, lsn_t> att;
     for (auto& pr : losers_)
     {
-        att[pr.first] = pr.second;
+        CHECK_FAILURE(XactMgr().add_xact(pr.first, pr.second) != nullptr);
         if (pr.second != NULL_LSN)
             ++no_nil_loser;
     }
 
-    while (no_nil_loser)
+    while (no_nil_loser > 0)
     {
+        std::cout << no_nil_loser << std::endl;
+
         xact_id nexttrans;
         {
             lsn_t last_seq = NULL_LSN;
             for (auto& loser : losers_)
             {
-                if (last_seq < loser.second)
+                if (last_seq <= loser.second)
                 {
                     nexttrans = loser.first;
                     last_seq = loser.second;
@@ -206,13 +207,12 @@ bool Recovery::undo()
         }
         lsn_t nextentry = losers_[nexttrans];
 
-        Log log = LogMgr().read_log(nextentry);
-
-        f_log_msg_ << "LSN " << log.lsn() << " ";
+        Log& log = logs_[nextentry];
 
         if (log.type() == LogType::COMPENSATE)
         {
-            f_log_msg_ << "[CLR] next undo lsn " << log.next_undo_lsn();
+            f_log_msg_ << "LSN " << log.lsn() + log.size()
+                       << " [CLR] next undo lsn " << log.next_undo_lsn();
 
             if ((losers_[nexttrans] = log.next_undo_lsn()) == NULL_LSN)
                 --no_nil_loser;
@@ -229,14 +229,13 @@ bool Recovery::undo()
                             (log.offset() - 8 - PAGE_HEADER_SIZE) /
                                 PAGE_DATA_SIZE);
 
-                        page.header().page_lsn = LogMgr().log_compensate(
-                            log.xid(), att[log.xid()], hid,
-                            PAGE_DATA_VALUE_SIZE, log.new_data(),
-                            log.old_data(), log.last_lsn());
+                        att[log.xid()] = page.header().page_lsn =
+                            LogMgr().log_compensate(
+                                log.xid(), att[log.xid()], hid,
+                                PAGE_DATA_VALUE_SIZE, log.new_data(),
+                                log.old_data(), log.last_lsn());
                         memcpy(page.data()[hid.offset].value, log.old_data(),
                                log.length());
-
-                        att[log.xid()] = log.lsn();
 
                         page.mark_dirty();
                     }
@@ -246,7 +245,8 @@ bool Recovery::undo()
             if ((losers_[nexttrans] = log.last_lsn()) == NULL_LSN)
                 --no_nil_loser;
 
-            f_log_msg_ << "[UPDATE] Transaction id " << log.xid()
+            f_log_msg_ << "LSN " << log.lsn() + log.size()
+                       << " [UPDATE] Transaction id " << log.xid()
                        << " undo apply";
         }
         else if (log.type() == LogType::BEGIN)
@@ -264,11 +264,13 @@ bool Recovery::undo()
             return false;
         }
 
-        f_log_msg_ << '\n';
+        f_log_msg_ << std::endl;
     }
 
-    f_log_msg_ << "[UNDO] Undo pass end\n";
+    f_log_msg_ << "[UNDO] Undo pass end" << std::endl;
     f_log_msg_.flush();
+
+    LogMgr().force();
 
     return true;
 }
