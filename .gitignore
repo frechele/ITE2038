@@ -3,3 +3,11 @@
 main
 test
 libbpt.a
+
+# for final report
+document/*.log
+document/*.aux
+document/*.gz
+document/*.pdf
+document/*.toc
+document/*.zip
