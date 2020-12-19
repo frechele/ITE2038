@@ -1,0 +1,46 @@
+\documentclass[a4paper, 11pt]{article}
+
+\usepackage{indentfirst}
+\usepackage{kotex}
+\usepackage{subfiles}
+\usepackage[scale=0.75,hmarginratio=1:1,vmarginratio=2:3,a4paper]{geometry}
+
+\renewcommand{\contentsname}{Table of Contents}
+
+\begin{document}
+\begin{titlepage}
+	\begin{center}
+		\vspace*{3cm}
+		\begin{LARGE}
+		Database System 2020-2\\
+		\vspace{0.5em}
+		Final Report
+		\end{LARGE}
+	\end{center}
+
+	\vspace{13cm}
+	\begin{flushright}
+		\begin{Large}
+			ITE2038-11800\\
+			2019******\\
+			박준영
+		\end{Large}
+	\end{flushright}
+\end{titlepage}
+	
+\tableofcontents
+\newpage
+
+\section{Overall Layered Architecture}
+\subfile{layered.tex}
+
+\section{Concurrency Control Implementation}
+\subfile{concurrency.tex}
+
+\section{Crash-Recovery Implementation}
+\subfile{recovery.tex}
+
+\section{In-depth Analysis}
+\subfile{analysis.tex}
+
+\end{document}
