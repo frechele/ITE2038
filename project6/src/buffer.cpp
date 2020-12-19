@@ -1,5 +1,6 @@
 #include "buffer.h"
 
+#include "log.h"
 #include "page.h"
 
 #include <memory.h>
@@ -163,6 +164,18 @@ bool BufferManager::close_table(Table& table)
     }
 
     return FileMgr().close_table(table);
+}
+
+bool BufferManager::sync_all()
+{
+    std::scoped_lock lock(mutex_);
+
+    for (auto& pr : block_tbl_)
+    {
+        CHECK_FAILURE(clear_block(pr.second));
+    }
+
+    return true;
 }
 
 bool BufferManager::create_page(Table& table, bool is_leaf, pagenum_t& pagenum)
@@ -331,6 +344,9 @@ bool BufferManager::clear_block(BufferBlock* block)
 
     if (block->is_dirty_)
     {
+        if (LogMgr().find_page(table_id, pagenum))
+            CHECK_FAILURE(LogMgr().force());
+
         CHECK_FAILURE(
             TblMgr().get_table(table_id).value()->file()->file_write_page(
                 pagenum, block->frame_));

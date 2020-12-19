@@ -17,13 +17,15 @@ STATIC_LIB:=$(LIBS)libbpt.a
 # Include more files if you write another source file.
 SRCS_FOR_LIB:=$(SRCDIR)bpt.cpp $(SRCDIR)file.cpp $(SRCDIR)dbapi.cpp \
 				$(SRCDIR)page.cpp $(SRCDIR)buffer.cpp $(SRCDIR)table.cpp \
-				$(SRCDIR)lock.cpp $(SRCDIR)xact.cpp $(SRCDIR)log.cpp
+				$(SRCDIR)lock.cpp $(SRCDIR)xact.cpp $(SRCDIR)log.cpp\
+				$(SRCDIR)recovery.cpp
 OBJS_FOR_LIB:=$(SRCS_FOR_LIB:.cpp=.o)
 
 CFLAGS+= -g -fPIC -I $(INC)
 CXXFLAGS+= -std=c++1z -Wall  -g -fPIC -I $(INC)
 
 TARGET=main
+TEST_TARGET=test
 
 all: $(TARGET)
 

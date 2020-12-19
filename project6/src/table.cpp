@@ -124,6 +124,22 @@ bool TableManager::close_table(table_id_t tid)
     return true;
 }
 
+bool TableManager::close_all_tables()
+{
+    for (auto& it : tables_)
+    {
+        CHECK_FAILURE(BPTree::close_table(it.second));
+    }
+
+    tables_.clear();
+    return true;
+}
+
+bool TableManager::is_open(table_id_t tid) const
+{
+    return tables_.find(tid) != end(tables_);
+}
+
 std::optional<Table*> TableManager::get_table(table_id_t tid)
 {
     auto it = tables_.find(tid);

@@ -51,7 +51,9 @@ class TableManager final
     [[nodiscard]] std::optional<table_id_t> open_table(
         const std::string& filename);
     [[nodiscard]] bool close_table(table_id_t tid);
+    [[nodiscard]] bool close_all_tables();
 
+    [[nodiscard]] bool is_open(table_id_t tid) const;
     [[nodiscard]] std::optional<Table*> get_table(table_id_t tid);
 
  private:

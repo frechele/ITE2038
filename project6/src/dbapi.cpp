@@ -3,6 +3,7 @@
 #include "common.h"
 #include "lock.h"
 #include "log.h"
+#include "recovery.h"
 #include "table.h"
 #include "xact.h"
 
@@ -10,12 +11,17 @@
 
 #include <iostream>
 
-int init_db(int num_buf, int flag, int log_num, char* log_path, char* logmsg_path)
+int init_db(int num_buf, int flag, int log_num, char* log_path,
+            char* logmsg_path)
 {
     CHECK_FAILURE2(LockManager::initialize(), FAIL);
-    CHECK_FAILURE2(LogManager::initialize(), FAIL);
+    CHECK_FAILURE2(LogManager::initialize(std::string(log_path)), FAIL);
     CHECK_FAILURE2(XactManager::initialize(), FAIL);
     CHECK_FAILURE2(TableManager::initialize(num_buf), FAIL);
+
+    Recovery recovery{ std::string(logmsg_path),
+                       static_cast<RecoveryMode>(flag), log_num };
+    recovery.start();
 
     return SUCCESS;
 }

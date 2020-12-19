@@ -4,6 +4,7 @@
 #include "common.h"
 #include "log.h"
 
+#include <memory.h>
 #include <algorithm>
 #include <cassert>
 #include <new>
@@ -63,7 +64,7 @@ bool Xact::release_all_locks()
 
 bool Xact::undo()
 {
-    const auto& logs = LogMgr().get(id_);
+    const auto& logs = LogMgr().get(this);
 
     const auto end_it = logs.rend();
     for (auto it = logs.rbegin(); it != end_it; ++it)
@@ -72,14 +73,24 @@ bool Xact::undo()
 
         if (type == LogType::UPDATE)
         {
-            const auto log = static_cast<LogUpdate*>(*it);
-            const HierarchyID hid = log->hid();
+            const auto log = (*it).get();
+            const HierarchyID hid(
+                log->table_id(), log->pagenum(),
+                (log->offset() - 8 - PAGE_HEADER_SIZE) / PAGE_DATA_SIZE);
 
             // table must be avaiable
             Table* table = TblMgr().get_table(hid.table_id).value();
             CHECK_FAILURE(buffer(
-                [&](Page& page) { page.data()[hid.offset] = log->old_data(); },
+                [&](Page& page) {
+                    memcpy(page.data()[hid.offset].value, log->old_data(),
+                           log->length());
+                    page.mark_dirty();
+                },
                 *table, hid.pagenum, false));
+
+            LogMgr().log_compensate(id_, last_lsn_, hid, PAGE_DATA_VALUE_SIZE,
+                                    log->new_data(), log->old_data(),
+                                    log->last_lsn());
         }
     }
 
@@ -101,6 +112,16 @@ void Xact::wait(std::condition_variable& cv)
     std::unique_lock<std::mutex> lock(mutex_, std::adopt_lock);
 
     cv.wait(lock);
+}
+
+void Xact::last_lsn(std::size_t lsn)
+{
+    last_lsn_ = lsn;
+}
+
+std::size_t Xact::last_lsn() const
+{
+    return last_lsn_;
 }
 
 bool XactManager::initialize()
@@ -140,6 +161,8 @@ Xact* XactManager::begin()
 
     ++global_xact_counter_;
 
+    LogMgr().log_begin(xact);
+
     return xact;
 }
 
@@ -147,8 +170,9 @@ bool XactManager::commit(Xact* xact)
 {
     CHECK_FAILURE(xact->release_all_locks());
 
-    LogMgr().log<LogCommit>(xact->id());
-    LogMgr().remove(xact->id());
+    LogMgr().log_commit(xact);
+    LogMgr().remove(xact);
+    LogMgr().force();
 
     std::scoped_lock lock(mutex_);
 
@@ -161,10 +185,11 @@ bool XactManager::commit(Xact* xact)
 bool XactManager::abort(Xact* xact)
 {
     CHECK_FAILURE(xact->undo());
-    CHECK_FAILURE(xact->release_all_locks());
 
-    LogMgr().log<LogAbort>(xact->id());
-    LogMgr().remove(xact->id());
+    LogMgr().log_rollback(xact);
+    LogMgr().remove(xact);
+
+    CHECK_FAILURE(xact->release_all_locks());
 
     std::scoped_lock lock(mutex_);
 
