@@ -56,8 +56,7 @@ B+Tree는 Amittai Aviram의 코드\footnote{Source Code: http://www.amittai.com/
 별도의 state를 가지지 않기 때문에 모든 manager 중 유일하게 singleton class가 아니다.
 
 \paragraph{Optimization}
-원본 코드는 key를 찾을 때 linear search를 하였다. 하지만 본 DBMS에서는 internal page의 경우 key의 개수가 248개에 달해 linear search는 비효과적일 수 있다.
-page 내부에서 key는 정렬된 상태를 유지하기 때문에 binary search의 도입을 고려할 수 있었으며, 두 방식의 성능을 비교한 결과 다음의 결과가 나왔다.
+원본 코드는 key를 찾을 때 linear search를 하였다. Page 내부에서 key는 정렬된 상태를 유지하기 때문에 binary search의 도입을 고려할 수 있었으며, 두 방식의 성능을 비교한 결과 다음의 결과가 나왔다.
 
 \begin{figure}[!htb]
 	\centering
@@ -192,7 +191,7 @@ Table을 열고 닫는 작업은 다수의 layer에 걸쳐 일어난다. 또한 
 \paragraph{Page Read and Write}
 \texttt{Index Management Layer}에서 page에 대해 읽고 쓰기 위해서는 우선 \texttt{Buffer Management Layer}에 (table id, page id)에 대응하는 page를 요청한다. 만약 해당하는 page가 caching 되어있지 않다면 \texttt{File Management Layer}에 해당 page를 요청한 뒤, \texttt{Index Management Layer}에 제공한다.
 
-\begin{algorithm}
+\begin{algorithm}[!hbt]
 	\caption{Get page from Buffer Manager}
 	\begin{algorithmic}
 		\Function{BufferManager.GetPage}{table id, page id}
@@ -205,6 +204,7 @@ Table을 열고 닫는 작업은 다수의 layer에 걸쳐 일어난다. 또한 
 	\end{algorithmic}
 \end{algorithm}
 
+\newpage
 만약에 해당 page가 수정되었다면 page를 요청한 곳에서 dirty flag를 set하여 이후 \texttt{Buffer Management Layer}가 해당 수정을 \texttt{File Management Layer}에게 전달할 수 있도록 한다.
 정리하면 page에 관련된 write, read는 다음의 방식으로 처리된다.
 
@@ -220,7 +220,7 @@ Table을 열고 닫는 작업은 다수의 layer에 걸쳐 일어난다. 또한 
 	\end{algorithmic}
 \end{algorithm}
 
-\begin{algorithm}
+\begin{algorithm}[!hbt]
 	\caption{Case 2 - page에 쓰기도 하는 경우}
 	
 	\hspace*{8pt} \textbf{Input}: table id, page id\\

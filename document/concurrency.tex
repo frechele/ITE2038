@@ -10,7 +10,7 @@
 	\label{cc:overall_design}
 \end{figure}
 
-위 Figure \ref{cc:overall_design}는 \texttt{Concurrency Control}의 전반적인 구조도다. \texttt{Concurrency Control}은 크게 transaction과 lock을 관리하는 부분과 logging을 관리하는 부분으로 나뉜다.
+Figure \ref{cc:overall_design}는 \texttt{Concurrency Control}의 전반적인 구조도다. \texttt{Concurrency Control}은 크게 transaction과 lock을 관리하는 부분과 logging을 관리하는 부분으로 나뉜다.
 
 \subsubsection{Transaction Manager}
 \begin{table}[!htb]
@@ -68,6 +68,7 @@ EXCLUSIVE mode의 lock을 어느 한 transaction이 획득하면 commit 혹은 a
 HashTableEntry의 Lock type은 해당 record에 걸린 lock 중 가장 강력한 lock type을 나타낸다.
 예컨대 SHARED mode의 lock과 EXCLUSIVE mode의 lock이 동시에 한 record에 걸려있다면 해당 record에 대한 HashTableEntry의 Lock type은 EXCLUSIVE가 된다
 (단, 아무 lock이 존재하지 않는다면 None이다).
+
 그리고 lock acquire가 성공한 lock object의 list와 성공하지 못해 wait 상태인 lock의 object의 list를 별도로 두었다.
 이렇게 디자인한 사유는 구현의 편의와 효율성을 위해서다.
 lock acquire에서 acquire 혹은 wait 여부를 결정할 때 하나의 list로 관리한다면 깨어있는 lock과 대기 중인 lock의 경계를 찾기 위해 list를 순회하는데 $O(n)$의 time complexity가 발생한다.
@@ -89,6 +90,7 @@ hashing function은 STL library에 있는 문자열에 대한 hashing function�
 	\end{algorithmic}
 \end{algorithm}
 
+\newpage
 \paragraph{Optimization for Condition Variable}
 Lock object 별로 condition variable을 가지고 있는 디자인(non-shared)과 HashTableEntry에서 만 condition variable을 갖도록 하는 디자인(shared)을 각각 구현해 성능 테스트를 하여 다음과 같이 전자의 디자인의 성능이 더 우수함을 확인했다.
 
@@ -151,6 +153,7 @@ Lock을 acquire 하는데 실패했다면 해당 lock이 deadlock을 유발하�
 \paragraph{Wait for Graph}
 Deadlock은 \emph{Wait for Graph}를 만들어 cycle이 존재하는지 확인하는 방식으로 탐지한다.
 
+\newpage
 \begin{figure}[!hbp]
 	\centering
 	\includegraphics[width=.4\textwidth]{images/cc/wait_for_graph.png}
@@ -177,7 +180,6 @@ Deadlock 탐지는 다음 순서에 따라 진행된다.\mbox{}\\
 \indent 위 process 진행 결과 cycle이 존재한다 판별되면 요청 들어온 lock에 대응하는 transaction을 abort 및 rollback 한다.
 \mbox{}\\
 
-\newpage
 \subsubsection{Transaction}
 \begin{figure}[!hbt]
 	\centering
