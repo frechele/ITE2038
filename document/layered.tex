@@ -79,7 +79,6 @@ page 내부에서 key는 정렬된 상태를 유지하기 때문에 binary searc
 	\end{tabularx}
 \end{table}
 
-
 \paragraph{LRU Policy}
 Doubly linked list를 이용해 LRU policy를 구현했다. page를 \texttt{Buffer Management Layer}에 요청하면 그에 해당하는 buffer block의 link를 끊고 tail에 insert 한다. 따라서 최근 요청된 buffer block일수록 linked list의 tail 쪽에 위치하고, 마지막 요청이 오래전일수록 head 쪽에 위치하게 된다. 따라서 eviction이 일어날 때는 head부터 victim을 찾는다.
 
@@ -125,6 +124,23 @@ pin을 하는 시점은 선제적으로 필요한 모든 page에 대해 거는 �
 	\caption{각 operation별 maximum pin count}
 \end{table}
 
+
+\paragraph{Hash Table}
+(table id, page id)에 해당하는 buffer block를 빠르게 찾기 위해 searching structure로 hash table을 두었다. Hash table의 구현체는 STL library의 unordered\_map을 이용하였다.
+hashing function은 STL library에 있는 문자열에 대한 hashing function을 이용하여 만들었다.
+
+\begin{algorithm}
+	\caption{Hash function for tuple of (table id, page id)}
+	
+	\begin{algorithmic}[lines]
+		\Function{Hash}{table id, page id}
+		\State \Return {StringHashing(table id + "$|$" + page id)}
+		\Comment{StringHashing은 STL library}
+		\EndFunction
+	\end{algorithmic}
+\end{algorithm}
+
+\newpage
 \subsubsection{File Management Layer}
 \begin{table}[!htb]
 	\begin{tabularx}{\textwidth}{|l|X|}
@@ -138,7 +154,6 @@ pin을 하는 시점은 선제적으로 필요한 모든 page에 대해 거는 �
 	\end{tabularx}
 \end{table}
 
-\newpage
 \subsection{Data Flow}
 본 section에서는 상황별로 data가 어떠한 방식으로 흘러가는지를 소개한다.
 
@@ -222,7 +237,6 @@ Table을 열고 닫는 작업은 다수의 layer에 걸쳐 일어난다. 또한 
 
 \paragraph{Page Create and Free}
 \texttt{Index Management Layer}가 새로운 page의 할당이 필요한 경우에는 해당 table의 database file에 free page가 있다면 해당 free page를 할당해준다. 그렇지 않다면 database file에 새로운 page에 대한 공간을 할당한다. 할당한 이후에 file header page를 수정하고, free page linked list를 수정하는 행위는 단순히 page에 write를 하는 것과 동일하므로 이러한 작업은 \texttt{Buffer Management Layer}에서 수행한다.
-
 
 
 \end{document}

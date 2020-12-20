@@ -73,6 +73,33 @@ HashTableEntry의 Lock type은 해당 record에 걸린 lock 중 가장 강력한
 lock acquire에서 acquire 혹은 wait 여부를 결정할 때 하나의 list로 관리한다면 깨어있는 lock과 대기 중인 lock의 경계를 찾기 위해 list를 순회하는데 $O(n)$의 time complexity가 발생한다.
 하지만 둘을 분리함으로써 run lock list의 마지막과만 비교하는 $O(1)$의 time complexity로 해결이 가능하다.
 
+\paragraph{Hash Table}
+(table id, page id, offset)에 해당하는 HashTableEntry를 빠르게 찾기 위해 searching structure로 hash table을 두었다. Hash table의 구현체는 STL library의 unordered\_map을 이용하였다.
+hashing function은 STL library에 있는 문자열에 대한 hashing function을 이용하여 만들었다.
+
+\begin{algorithm}
+	\caption{Hash function for tuple of (table id, page id, offset)}
+	
+	\begin{algorithmic}[lines]
+		\Function{Hash}{table id, page id, offset}
+		\State \Return {StringHashing(table id + "$|$" + page id +\\
+			\hspace{0.3\linewidth} "$|$" + offset)}
+		\Comment{StringHashing은 STL library}
+		\EndFunction
+	\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Optimization for Condition Variable}
+Lock object 별로 condition variable을 가지고 있는 디자인(non-shared)과 HashTableEntry에서 만 condition variable을 갖도록 하는 디자인(shared)을 각각 구현해 성능 테스트를 하여 다음과 같이 전자의 디자인의 성능이 더 우수함을 확인했다.
+
+\begin{figure}[!hbt]
+	\centering
+	\includegraphics[width=.8\textwidth]{images/cc/cond_var_design.png}
+	\caption{Performance Test for Condition Variable Design}
+\end{figure}
+
+
+
 \paragraph{Lock Acquire}\mbox{}\\
 Lock을 acquire할 수 있다면 HashTableEntry의 run lock list에 넣는다. Lock의 획득 조건은 다음과 같다.\mbox{}\\
 
@@ -150,6 +177,7 @@ Deadlock 탐지는 다음 순서에 따라 진행된다.\mbox{}\\
 \indent 위 process 진행 결과 cycle이 존재한다 판별되면 요청 들어온 lock에 대응하는 transaction을 abort 및 rollback 한다.
 \mbox{}\\
 
+\newpage
 \subsubsection{Transaction}
 \begin{figure}[!hbt]
 	\centering
