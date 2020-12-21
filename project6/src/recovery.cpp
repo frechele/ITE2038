@@ -32,11 +32,11 @@ void Recovery::start()
         return;
     }
 
-    if (!undo())
-    {
-        assert(TblMgr().close_all_tables());
-        return;
-    }
+    // if (!undo())
+    // {
+    //     assert(TblMgr().close_all_tables());
+    //     return;
+    // }
 
     assert(BufMgr().sync_all());
     assert(TblMgr().close_all_tables());
@@ -132,7 +132,7 @@ bool Recovery::redo()
                             else
                             {
                                 f_log_msg_ << "[CLR] next undo lsn "
-                                           << log.next_undo_lsn();
+                                           << log.next_undo_lsn() + logs_[log.next_undo_lsn()].size();
                             }
 
                             const HierarchyID hid(
@@ -184,35 +184,31 @@ bool Recovery::undo()
     std::unordered_map<xact_id, lsn_t> att;
     for (auto& pr : losers_)
     {
-        CHECK_FAILURE(XactMgr().add_xact(pr.first, pr.second) != nullptr);
         if (pr.second != NULL_LSN)
             ++no_nil_loser;
     }
 
     while (no_nil_loser > 0)
     {
-        std::cout << no_nil_loser << std::endl;
-
         xact_id nexttrans;
+        lsn_t nextentry = NULL_LSN;
         {
-            lsn_t last_seq = NULL_LSN;
             for (auto& loser : losers_)
             {
-                if (last_seq <= loser.second)
+                if (nextentry <= loser.second)
                 {
                     nexttrans = loser.first;
-                    last_seq = loser.second;
+                    nextentry = loser.second;
                 }
             }
         }
-        lsn_t nextentry = losers_[nexttrans];
 
         Log& log = logs_[nextentry];
 
         if (log.type() == LogType::COMPENSATE)
         {
             f_log_msg_ << "LSN " << log.lsn() + log.size()
-                       << " [CLR] next undo lsn " << log.next_undo_lsn();
+                       << " [CLR] next undo lsn " << log.next_undo_lsn() + logs_[log.next_undo_lsn()].size();
 
             if ((losers_[nexttrans] = log.next_undo_lsn()) == NULL_LSN)
                 --no_nil_loser;
@@ -229,13 +225,14 @@ bool Recovery::undo()
                             (log.offset() - 8 - PAGE_HEADER_SIZE) /
                                 PAGE_DATA_SIZE);
 
+                        memcpy(page.data()[hid.offset].value, log.old_data(),
+                               log.length());
+
                         att[log.xid()] = page.header().page_lsn =
                             LogMgr().log_compensate(
                                 log.xid(), att[log.xid()], hid,
                                 PAGE_DATA_VALUE_SIZE, log.new_data(),
                                 log.old_data(), log.last_lsn());
-                        memcpy(page.data()[hid.offset].value, log.old_data(),
-                               log.length());
 
                         page.mark_dirty();
                     }
@@ -256,6 +253,10 @@ bool Recovery::undo()
             att.erase(log.xid());
             losers_.erase(log.xid());
             --no_nil_loser;
+        }
+        else if (log.type() == LogType::ROLLBACK)
+        {
+            losers_[log.xid()] = log.last_lsn();
         }
 
         if (mode_ == RecoveryMode::UNDO_CRASH && --log_num_ == 0)

@@ -71,12 +71,16 @@ bool Xact::undo()
     {
         const LogType type = (*it)->type();
 
-        if (Log::HasRecord(type))
+        if (type == LogType::UPDATE)
         {
             const auto log = (*it).get();
             const HierarchyID hid(
                 log->table_id(), log->pagenum(),
                 (log->offset() - 8 - PAGE_HEADER_SIZE) / PAGE_DATA_SIZE);
+
+            last_lsn_ = LogMgr().log_compensate(
+                id_, last_lsn_, hid, PAGE_DATA_VALUE_SIZE, log->new_data(),
+                log->old_data(), log->last_lsn());
 
             // table must be avaiable
             Table* table = TblMgr().get_table(hid.table_id).value();
@@ -87,10 +91,6 @@ bool Xact::undo()
                     page.mark_dirty();
                 },
                 *table, hid.pagenum, false));
-
-            last_lsn_ = LogMgr().log_compensate(
-                id_, last_lsn_, hid, PAGE_DATA_VALUE_SIZE, log->new_data(),
-                log->old_data(), log->last_lsn());
         }
     }
 
@@ -149,20 +149,6 @@ XactManager& XactManager::get_instance()
     return *instance_;
 }
 
-Xact* XactManager::add_xact(xact_id xid, lsn_t last_lsn)
-{
-    std::scoped_lock lock(mutex_);
-
-    Xact* xact = new (std::nothrow) Xact(xid);
-    CHECK_FAILURE2(xact != nullptr, nullptr);
-
-    xacts_.insert_or_assign(xid, xact);
-
-    global_xact_counter_ = std::max(global_xact_counter_, xid);
-
-    return xact;
-}
-
 Xact* XactManager::begin()
 {
     std::scoped_lock lock(mutex_);
@@ -205,11 +191,11 @@ bool XactManager::abort(Xact* xact)
 
     const xact_id xid = xact->id();
 
+    CHECK_FAILURE(xact->release_all_locks());
+
     LogMgr().log_rollback(xid, xact->last_lsn());
     LogMgr().remove(xid);
     CHECK_FAILURE(LogMgr().force());
-
-    CHECK_FAILURE(xact->release_all_locks());
 
     std::scoped_lock lock(mutex_);
 

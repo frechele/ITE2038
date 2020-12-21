@@ -110,11 +110,12 @@ class LogManager final
 
     lsn_t log_begin(xact_id xid);
     lsn_t log_commit(xact_id xid, lsn_t last_lsn);
-    lsn_t log_update(xact_id xid, lsn_t last_lsn, const HierarchyID& hid, int length,
-                     page_data_t old_data, page_data_t new_data);
+    lsn_t log_update(xact_id xid, lsn_t last_lsn, const HierarchyID& hid,
+                     int length, page_data_t old_data, page_data_t new_data);
     lsn_t log_rollback(xact_id xid, lsn_t last_lsn);
-    lsn_t log_compensate(xact_id xid, lsn_t last_lsn, const HierarchyID& hid, int length,
-                         const void* old_data, const void* new_data, lsn_t next_undo_lsn);
+    lsn_t log_compensate(xact_id xid, lsn_t last_lsn, const HierarchyID& hid,
+                         int length, const void* old_data, const void* new_data,
+                         lsn_t next_undo_lsn);
 
     const std::list<std::unique_ptr<Log>>& get(xact_id xid) const;
     void remove(xact_id xid);
@@ -135,7 +136,7 @@ class LogManager final
     template <typename Func>
     [[nodiscard]] lsn_t logging(Func&& func);
     template <typename LogT>
-    void append_log(const LogT& log);
+    void append_log(const LogT& log, bool add_to_search = true);
 
     [[nodiscard]] Log read_log_offset(lsn_t offset) const;
 
@@ -165,15 +166,17 @@ lsn_t LogManager::logging(Func&& func)
     const lsn_t cur_lsn = header_.next_lsn;
 
     func(cur_lsn);
-    
+
     return cur_lsn;
 }
 
 template <typename LogT>
-void LogManager::append_log(const LogT& log)
+void LogManager::append_log(const LogT& log, bool add_to_search)
 {
     log_.emplace_back(std::make_unique<LogT>(log));
-    log_per_xact_[log.xid()].emplace_back(std::make_unique<LogT>(log));
+    
+    if (add_to_search)
+        log_per_xact_[log.xid()].emplace_back(std::make_unique<LogT>(log));
 
     header_.next_lsn += log.size();
 }

@@ -84,7 +84,7 @@ Log Log::create_compensate(xact_id xid, lsn_t lsn, lsn_t last_lsn,
 {
     Log log;
 
-    log.type_ = LogType::UPDATE;
+    log.type_ = LogType::COMPENSATE;
     log.size_ = sizeof(int) + sizeof(lsn_t) + sizeof(lsn_t) + sizeof(xact_id) +
                 sizeof(LogType) + sizeof(table_id_t) + sizeof(pagenum_t) +
                 sizeof(int) + sizeof(int) + length + length + sizeof(lsn_t);
@@ -244,7 +244,8 @@ lsn_t LogManager::log_compensate(xact_id xid, lsn_t last_lsn,
 {
     return logging([&](lsn_t lsn) {
         append_log(Log::create_compensate(xid, lsn, last_lsn, hid, length,
-                                          old_data, new_data, next_undo_lsn));
+                                          old_data, new_data, next_undo_lsn),
+                   false);
     });
 }
 
@@ -288,9 +289,8 @@ bool LogManager::force()
     {
         const std::size_t size = log->size();
 
-        CHECK_FAILURE(
-            pwrite(f_log_, log.get(), size,
-                   log->lsn() + sizeof(log_file_header)) != -1);
+        CHECK_FAILURE(pwrite(f_log_, log.get(), size,
+                             log->lsn() + sizeof(log_file_header)) != -1);
     }
 
     fsync(f_log_);
