@@ -1,3 +1,5 @@
+# WARNING: THIS CODE DOES NOT WORK CORRECTLY!!!
+
 # Crash and Recovery
 
 ## A. Log File Format
