@@ -2,6 +2,7 @@
 Database System @ Hanyang Univ.
 
 The goal of the project in this lecture is the implementation of a transaction engine and a DBMS engine that supports recovery.
+All codes were written in C++.
 
 ## [Project1](https://github.com/frechele/ITE2038/tree/master/project1) (actually, it's not a project)
 - SQL practice with Pokemon database.
